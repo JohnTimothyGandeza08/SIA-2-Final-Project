@@ -6,7 +6,9 @@ from PySide6.QtCore import QByteArray
 CLIENT_ID = "58e2dbd9"
 
 def fetch_trending_tracks(limit=4):
-    url = f"https://api.jamendo.com/v3.0/tracks/?client_id={CLIENT_ID}&format=json&limit={limit}&order=popularity_month&include=name+artist_name+image+audio"
+    # This is the exact URL that worked in your terminal
+    url = f"https://api.jamendo.com/v3.0/tracks/?client_id=58e2dbd9&format=json&limit={limit}&order=popularity_month"
+    
     try:
         print(f"Fetching from Jamendo...")
         response = requests.get(url, timeout=10)
@@ -14,10 +16,14 @@ def fetch_trending_tracks(limit=4):
         if response.status_code == 200:
             data = response.json()
             results = data.get("results", [])
+            
+            # DEBUG: Print the raw JSON headers
+            print(f"[JAMENDO DEBUG] Headers: {data.get('headers')}")
+            
             print(f"[JAMENDO] Successfully fetched {len(results)} tracks.")
             return results
         else:
-            print(f"[JAMENDO ERROR] Status {response.status_code}: {response.text}")
+            print(f"[JAMENDO ERROR] Status {response.status_code}")
             return []
             
     except Exception as e:
