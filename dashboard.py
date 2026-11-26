@@ -23,6 +23,9 @@ class MainWindow(QMainWindow):
         self.media_player = QMediaPlayer()
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
+        self.current_audio_url = ""
+        self.track_play_buttons = []
+        self.media_player.playbackStateChanged.connect(self._on_playback_state_changed)
 
         main_widget = QWidget()
         main_widget.setObjectName("MainContainer")
@@ -125,14 +128,35 @@ class MainWindow(QMainWindow):
         if not audio_url or not audio_url.startswith("http"):
             print(f"[PLAYER ERROR] Invalid audio URL: {audio_url}")
             return
-            
-        print(f"Playing: {track_name} from {audio_url}")
-        self.media_player.setSource(QUrl(audio_url))
+
+        same_track = self.current_audio_url == audio_url
+        if same_track and self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.pause()
+            return
+
+        if not same_track:
+            print(f"Playing: {track_name} from {audio_url}")
+            self.current_audio_url = audio_url
+            self.media_player.setSource(QUrl(audio_url))
+            self.player_title.setText(track_name)
+            self.player_artist.setText(artist_name)
+
         self.media_player.play()
-        
-        # Update player bar UI
-        self.player_title.setText(track_name)
-        self.player_artist.setText(artist_name)
+
+    def toggle_play_pause(self):
+        if not self.current_audio_url:
+            return
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.pause()
+        else:
+            self.media_player.play()
+
+    def _on_playback_state_changed(self, state):
+        playing = state == QMediaPlayer.PlaybackState.PlayingState
+        if hasattr(self, "play_pause_btn"):
+            self.play_pause_btn.setText("⏸" if playing else "▶")
+        for btn, url in self.track_play_buttons:
+            btn.setText("⏸" if playing and url == self.current_audio_url else "▶")
 
     def _create_play_icon(self, size=40, color="#ffffff", bg_color="#0055ff"):
         pixmap = QPixmap(size, size)
@@ -307,8 +331,11 @@ class MainWindow(QMainWindow):
                 
                 audio_url = track.get("audio")
                 if audio_url:
-                    play_btn.clicked.connect(lambda checked, url=audio_url, name=track_name, artist=track.get("artist_name"): 
-                                             self.play_jamendo_track(url, name, artist))
+                    self.track_play_buttons.append((play_btn, audio_url))
+                    play_btn.clicked.connect(
+                        lambda checked, url=audio_url, name=track_name, artist=track.get("artist_name"):
+                            self.play_jamendo_track(url, name, artist)
+                    )
                 
                 c_layout.addWidget(art_label)
                 c_layout.addSpacing(10)
@@ -658,11 +685,21 @@ class MainWindow(QMainWindow):
         center.setSpacing(5)
         controls = QHBoxLayout()
         controls.setAlignment(Qt.AlignCenter)
-        for icon in ["⏮", "⏸", "⏭"]:
-            btn = QPushButton(icon)
-            btn.setObjectName("MainPlayBtn" if icon == "⏸" else "PlayControls")
-            if icon == "⏸": btn.setFixedSize(32, 32)
-            controls.addWidget(btn)
+
+        prev_btn = QPushButton("⏮")
+        prev_btn.setObjectName("PlayControls")
+        controls.addWidget(prev_btn)
+
+        self.play_pause_btn = QPushButton("▶")
+        self.play_pause_btn.setObjectName("MainPlayBtn")
+        self.play_pause_btn.setFixedSize(32, 32)
+        self.play_pause_btn.setCursor(Qt.PointingHandCursor)
+        self.play_pause_btn.clicked.connect(self.toggle_play_pause)
+        controls.addWidget(self.play_pause_btn)
+
+        next_btn = QPushButton("⏭")
+        next_btn.setObjectName("PlayControls")
+        controls.addWidget(next_btn)
 
         progress = QHBoxLayout()
         now = QLabel("02:41")
