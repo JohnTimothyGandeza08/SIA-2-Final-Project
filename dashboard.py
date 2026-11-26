@@ -1511,20 +1511,8 @@ class VideoHub(QWidget):
 
     def _on_search_failed(self, message: str):
         self.search.setEnabled(True)
-        self.search.setPlaceholderText("Search videos... (press Enter)")
-        self.welcome_label.setText(message)
-        QTimer.singleShot(3000, lambda: self.welcome_label.setText(
-            f"Welcome, {self._dashboard_username()}!"
-        ))
-
-    def _dashboard_username(self):
-        widget = self.parent()
-        while widget is not None:
-            username = getattr(widget, "username", None)
-            if username:
-                return username
-            widget = widget.parent()
-        return "User"
+        self.search.setPlaceholderText(message)
+        QTimer.singleShot(3000, lambda: self.search.setPlaceholderText("Search videos... (press Enter)"))
 
 
 # ======================================================================

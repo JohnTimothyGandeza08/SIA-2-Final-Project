@@ -15,6 +15,7 @@ class VideoSearchClient(QObject):
         self._pending_metadata = 0
         self._collected_videos = []
         self._metadata_replies = []
+        self._done = False
 
     def search(self, query: str, limit: int = 24):
         query = query.strip()
@@ -22,6 +23,7 @@ class VideoSearchClient(QObject):
             return
         self._collected_videos = []
         self._pending_metadata = 0
+        self._done = False
 
         url = QUrl("https://archive.org/advancedsearch.php")
         query_obj = QUrlQuery()
@@ -45,6 +47,7 @@ class VideoSearchClient(QObject):
     def fetch_trending(self, limit: int = 12):
         self._collected_videos = []
         self._pending_metadata = 0
+        self._done = False
         url = QUrl("https://archive.org/advancedsearch.php")
         query_obj = QUrlQuery()
         safe_query = (
@@ -68,6 +71,7 @@ class VideoSearchClient(QObject):
     def fetch_latest(self, limit: int = 12):
         self._collected_videos = []
         self._pending_metadata = 0
+        self._done = False
         url = QUrl("https://archive.org/advancedsearch.php")
         query_obj = QUrlQuery()
         safe_query = (
@@ -169,6 +173,9 @@ class VideoSearchClient(QObject):
                 self._finish()
 
     def _finish(self):
+        if self._done:
+            return
+        self._done = True
         if self._collected_videos:
             self.results_ready.emit(self._collected_videos)
         else:
