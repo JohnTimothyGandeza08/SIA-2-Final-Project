@@ -10,16 +10,27 @@ class AppRouter:
     """Handles the flow between the Login window and the Main Dashboard."""
     def __init__(self):
         self.login_window = LoginWindow()
+        self.main_window = None
         self.login_window.login_successful.connect(self.show_dashboard)
 
     def start(self):
         self.login_window.show()
 
     def show_dashboard(self, username):
-        # EXPLICITLY pass the username received from the signal
-        self.main_window = MainWindow(username=username) 
+        self.main_window = MainWindow(username=username)
+        self.main_window.logout_requested.connect(self.show_login)
         self.main_window.show()
-        self.login_window.close()
+        self.login_window.hide()
+
+    def show_login(self):
+        self.login_window.pass_input.clear()
+        self.login_window.error_label.clear()
+        self.login_window.show()
+        self.login_window.raise_()
+        self.login_window.activateWindow()
+        if self.main_window is not None:
+            self.main_window.close()
+            self.main_window = None
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

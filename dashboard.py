@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QScrollArea, QFrame,
     QSlider, QGridLayout, QStackedWidget, QSizePolicy, QMessageBox,
-    QDialog, QComboBox
+    QDialog, QComboBox, QMenu
 )
 from PySide6.QtCore import Qt, QPointF, QUrl, QThread, Signal, QByteArray, QTimer, QSize, QRectF, QObject
 from PySide6.QtGui import QPainter, QColor, QPolygonF, QBrush, QPixmap, QImage, QIcon, QPen, QPainterPath
@@ -1556,6 +1556,8 @@ class SearchWorker(QThread):
 
 
 class MainWindow(QMainWindow):
+    logout_requested = Signal()
+
     def __init__(self, username="User"):
         super().__init__()
         self.username = username
@@ -1654,10 +1656,16 @@ class MainWindow(QMainWindow):
         self.header_search.setFixedSize(240, 30)
         self.header_search.returnPressed.connect(self._on_header_search)
 
-        self.profile_label = QLabel("U")
+        self.profile_label = QPushButton("U")
         self.profile_label.setFixedSize(30, 30)
-        self.profile_label.setAlignment(Qt.AlignCenter)
-        self.profile_label.setStyleSheet("background: white; color: black; border-radius: 15px; font-weight: bold; font-size: 12px;")
+        self.profile_label.setCursor(Qt.PointingHandCursor)
+        self.profile_label.setToolTip("Account")
+        self.profile_label.setStyleSheet(
+            "QPushButton { background: white; color: black; border: none; border-radius: 15px; "
+            "font-weight: bold; font-size: 12px; }"
+            "QPushButton:hover { background: #d6e4ff; }"
+        )
+        self.profile_label.clicked.connect(self._open_profile_menu)
 
         h_layout.addLayout(logo_box)
         h_layout.addStretch()
@@ -1762,14 +1770,17 @@ class MainWindow(QMainWindow):
         if mode_index == 0:
             self.navbar.show()
             self.player_bar.show()
+            self.header_search.setPlaceholderText("🔍 Search artists or songs...")
             self.stacked_widget.setCurrentIndex(self.current_music_page)
         elif mode_index == 1:
             self.navbar.hide()
             self.player_bar.hide()
+            self.header_search.setPlaceholderText("🔍 Search videos...")
             self.stacked_widget.setCurrentIndex(3)
         elif mode_index == 2:
             self.navbar.hide()
             self.player_bar.hide()
+            self.header_search.setPlaceholderText("🔍 Search artists or songs...")
             self.stacked_widget.setCurrentIndex(4)
 
     # ==========================================
@@ -2299,9 +2310,46 @@ class MainWindow(QMainWindow):
         scroll.setWidget(content)
         return scroll
 
+    def _open_profile_menu(self):
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu { background-color: #141414; color: white; border: 1px solid #2a2a2a; "
+            "border-radius: 8px; padding: 6px; }"
+            "QMenu::item { padding: 8px 18px; border-radius: 6px; }"
+            "QMenu::item:selected { background-color: #0055ff; }"
+            "QMenu::item:disabled { color: #9aa0a6; }"
+            "QMenu::separator { height: 1px; background: #2a2a2a; margin: 4px 8px; }"
+        )
+        account = menu.addAction(self.username or "Account")
+        account.setEnabled(False)
+        menu.addSeparator()
+        logout_action = menu.addAction("Log out")
+        logout_action.triggered.connect(self.logout)
+        menu.exec(self.profile_label.mapToGlobal(self.profile_label.rect().bottomLeft()))
+
+    def logout(self):
+        answer = QMessageBox.question(
+            self,
+            "Log out",
+            f"Log out of {self.username}?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.stop()
+        self.logout_requested.emit()
+        self.close()
+
     def _on_header_search(self):
         query = self.header_search.text().strip()
-        if not query: return
+        if not query:
+            return
+        if self.stacked_widget.currentIndex() == 3 and hasattr(self, "video_hub"):
+            self.video_hub.search.setText(query)
+            self.video_hub._on_search()
+            return
         self._set_top_mode(0)
         self.set_page(1)
         self._quick_search(query)
