@@ -18,7 +18,6 @@ from games_page import GamesPage
 
 class ClickableFrame(QFrame):
     clicked = Signal()
-
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
@@ -27,53 +26,42 @@ class ClickableFrame(QFrame):
 
 class SearchWorker(QThread):
     finished_search = Signal(int, str, dict, dict)
-
     def __init__(self, request_id, query):
         super().__init__()
         self.request_id = request_id
         self.query = query
-
     def run(self):
         results = jamendo_api.search_catalog(
-            self.query,
-            artist_limit=6,
-            artist_tracks_limit=6,
-            track_limit=20,
+            self.query, artist_limit=6, artist_tracks_limit=6, track_limit=20,
         )
         urls = set()
         for artist in results.get("artists", []):
-            if artist.get("image"):
-                urls.add(artist["image"])
+            if artist.get("image"): urls.add(artist["image"])
             for t in artist.get("tracks", []):
                 img = t.get("album_image") or t.get("image")
-                if img:
-                    urls.add(img)
+                if img: urls.add(img)
         for t in results.get("tracks", []):
             img = t.get("album_image") or t.get("image")
-            if img:
-                urls.add(img)
-
+            if img: urls.add(img)
         image_bytes = {}
         url_list = list(urls)
         if url_list:
             with ThreadPoolExecutor(max_workers=8) as pool:
                 fetched = list(pool.map(jamendo_api.download_image_bytes, url_list))
             for url, raw in zip(url_list, fetched):
-                if raw:
-                    image_bytes[url] = raw
-
+                if raw: image_bytes[url] = raw
         self.finished_search.emit(self.request_id, self.query, results, image_bytes)
 
 
 class MainWindow(QMainWindow):
     def __init__(self, username="User"):
         super().__init__()
-        self.username = username
+        self.username = username  # Store it immediately
+        
         self.setWindowTitle("Pulse")
         self.resize(1100, 800)
         self.setStyleSheet(DARK_THEME)
 
-        # Setup Media Player
         self.media_player = QMediaPlayer()
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
@@ -90,11 +78,9 @@ class MainWindow(QMainWindow):
         self.home_play_buttons = []
         self.search_play_buttons = []
         self.library_play_buttons = []
-
         self.home_duration_labels = []
         self.search_duration_labels = []
         self.library_duration_labels = []
-
         self.home_heart_buttons = []
         self.search_heart_buttons = []
         self.library_heart_buttons = []
@@ -105,7 +91,6 @@ class MainWindow(QMainWindow):
         self.search_filter = "ALL"
         self.last_search_results = None
         self.search_history = []
-
         self.recently_played = []
         self.liked_tracks = []
         self.library_filter = "All"
@@ -113,9 +98,7 @@ class MainWindow(QMainWindow):
         self.search_debounce_timer = QTimer(self)
         self.search_debounce_timer.setSingleShot(True)
         self.search_debounce_timer.setInterval(350)
-        self.search_debounce_timer.timeout.connect(
-            lambda: self.run_search(self.big_search.text())
-        )
+        self.search_debounce_timer.timeout.connect(lambda: self.run_search(self.big_search.text()))
 
         self.media_player.playbackStateChanged.connect(self._on_playback_state_changed)
         self.media_player.mediaStatusChanged.connect(self._on_media_status_changed)
@@ -130,14 +113,13 @@ class MainWindow(QMainWindow):
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
 
-        # --- 1. TOP HEADER ---
+        # TOP HEADER
         header = QWidget()
         header.setObjectName("TopHeader")
         header.setFixedHeight(64)
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(30, 0, 30, 0)
 
-        # Left: Logo
         logo_box = QHBoxLayout()
         logo_icon = QLabel("▶")
         logo_icon.setStyleSheet("background: #0055ff; color: white; border-radius: 4px; padding: 2px 6px; font-size: 12px;")
@@ -146,7 +128,6 @@ class MainWindow(QMainWindow):
         logo_box.addWidget(logo_icon)
         logo_box.addWidget(logo_text)
 
-        # Center: Segmented Control
         seg_widget = QWidget()
         seg_widget.setObjectName("SegmentedControl")
         seg_widget.setFixedSize(240, 34)
@@ -164,14 +145,12 @@ class MainWindow(QMainWindow):
             seg_layout.addWidget(btn)
             self.mode_buttons.append(btn)
 
-        # Right: Search + Profile
         self.header_search = QLineEdit()
         self.header_search.setObjectName("SearchBar")
         self.header_search.setPlaceholderText("🔍 Search artists or songs...")
         self.header_search.setFixedSize(240, 30)
         self.header_search.returnPressed.connect(self._on_header_search)
 
-        # Store profile label reference to update later
         self.profile_label = QLabel("U")
         self.profile_label.setFixedSize(30, 30)
         self.profile_label.setAlignment(Qt.AlignCenter)
@@ -184,7 +163,7 @@ class MainWindow(QMainWindow):
         h_layout.addWidget(self.header_search)
         h_layout.addWidget(self.profile_label)
 
-        # --- 2. NAVBAR ---
+        # NAVBAR
         self.navbar = QWidget()
         self.navbar.setObjectName("TopNavBar")
         self.navbar.setFixedHeight(56)
@@ -205,44 +184,41 @@ class MainWindow(QMainWindow):
         self._update_nav_pills(0)
         nav_layout.addStretch()
 
-        # --- 3. STACKED WIDGET ---
+        # STACKED WIDGET
         self.stacked_widget = QStackedWidget()
         self.games_page = GamesPage(username=self.username)
         
-        # Build pages
         self.stacked_widget.addWidget(self.build_home_page())      # Index 0
         self.stacked_widget.addWidget(self.build_search_page())    # Index 1
         self.stacked_widget.addWidget(self.build_library_page())   # Index 2
         self.stacked_widget.addWidget(self.build_video_page())     # Index 3
         self.stacked_widget.addWidget(self.games_page)             # Index 4
 
-        # --- 4. ASSEMBLE ---
         outer_layout.addWidget(header)
         outer_layout.addWidget(self.navbar)
         outer_layout.addWidget(self.stacked_widget, 1)
         outer_layout.addWidget(self.create_player_bar())
 
-        # --- 5. FINALIZE USERNAME ---
-        # This explicitly sets the text on all labels AFTER they have been created.
-        self.apply_username(self.username)
+        # --- THE FIX: Call this at the very end ---
+        self.set_username(self.username)
 
-    def apply_username(self, username):
-        """Forcefully updates all widgets that display the username."""
-        self.username = username if username else "User"
+    def set_username(self, username):
+        """Force updates the UI labels after they are created."""
+        self.username = username
+        initial = self.username[0].upper() if self.username else "U"
         
-        # 1. Update Profile Circle
-        if hasattr(self, 'profile_label'):
-            self.profile_label.setText(self.username[0].upper())
-
-        # 2. Update Home Page Label
+        # 1. Update Top-Right Profile Circle
+        self.profile_label.setText(initial)
+        
+        # 2. Update Home Page Welcome Label
         if hasattr(self, 'home_welcome_label'):
             self.home_welcome_label.setText(f"Welcome back, {self.username}!")
-
-        # 3. Update Video Page Label
+            
+        # 3. Update Video Page Welcome Label
         if hasattr(self, 'video_welcome_label'):
             self.video_welcome_label.setText(f"Welcome, {self.username}!")
-
-        # 4. Update Games Page Label
+            
+        # 4. Update Games Page Welcome Label
         if hasattr(self, 'games_page') and hasattr(self.games_page, 'welcome_lbl'):
             self.games_page.welcome_lbl.setText(f"Welcome, {self.username}!")
 
@@ -251,10 +227,7 @@ class MainWindow(QMainWindow):
             btn.setObjectName("SegBtnActive" if i == mode_index else "SegBtn")
             btn.style().unpolish(btn)
             btn.style().polish(btn)
-
-        if mode_index != 2:
-            self.games_page.pause_all()
-
+        if mode_index != 2: self.games_page.pause_all()
         if mode_index == 0:
             self.navbar.show()
             self.stacked_widget.setCurrentIndex(self.current_music_page)
@@ -279,27 +252,23 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(30, 20, 30, 20)
         layout.setSpacing(25)
 
-        # --- WELCOME MESSAGE ---
+        # Create the label and save reference to self
         welcome_header = QHBoxLayout()
-        # Create label and store reference immediately
-        self.home_welcome_label = QLabel("Welcome back, User!") 
+        self.home_welcome_label = QLabel("Welcome back, User!")
         self.home_welcome_label.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
         welcome_header.addWidget(self.home_welcome_label)
         welcome_header.addStretch()
         layout.addLayout(welcome_header)
 
-        # --- HERO BANNER ---
         hero = QFrame()
         hero.setObjectName("HeroBanner")
         hero.setFixedHeight(220)
         h_layout = QHBoxLayout(hero)
         h_layout.setContentsMargins(20, 20, 20, 20)
         h_layout.setSpacing(25)
-
         h_art = QLabel()
         h_art.setFixedSize(180, 180)
         h_art.setStyleSheet("background: #333; border-radius: 8px;")
-
         h_text = QVBoxLayout()
         h_text.setAlignment(Qt.AlignVCenter)
         h_text.setSpacing(6)
@@ -310,22 +279,18 @@ class MainWindow(QMainWindow):
         h_desc = QLabel("Recorded in the Swiss Alps, full of snow and silence and long reverb tails that invite meditative space for deep, uninterrupted listening.")
         h_desc.setWordWrap(True)
         h_desc.setStyleSheet("color: #aaa; font-size: 12px;")
-
         h_btn = QPushButton("▶ Play Album")
         h_btn.setFixedSize(110, 32)
         h_btn.setStyleSheet("background-color: #0055ff; color: white; border-radius: 16px; font-weight: bold; font-size: 11px;")
-
         h_text.addWidget(h_tag)
         h_text.addWidget(h_title)
         h_text.addWidget(h_desc)
         h_text.addSpacing(10)
         h_text.addWidget(h_btn, alignment=Qt.AlignLeft)
-
         h_layout.addWidget(h_art)
         h_layout.addLayout(h_text, 1)
         layout.addWidget(hero)
 
-        # --- JUMP BACK IN ---
         jb_head = QHBoxLayout()
         jb_title = QLabel("Jump Back In")
         jb_title.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
@@ -338,32 +303,21 @@ class MainWindow(QMainWindow):
 
         jb_layout = QHBoxLayout()
         jb_layout.setSpacing(15)
-        recents = [
-            ("Nils Frahm Radio", "Artist Mix"),
-            ("Deep Focus Playlist", "42 tracks · Ambient"),
-            ("All Melody", "Nils Frahm"),
-            ("remember", "Ólafur Arnalds"),
-            ("Eusa", "Hania Rani"),
-            ("Singularity", "Jon Hopkins"),
-        ]
+        recents = [("Nils Frahm Radio", "Artist Mix"), ("Deep Focus Playlist", "42 tracks · Ambient"), ("All Melody", "Nils Frahm"), ("remember", "Ólafur Arnalds"), ("Eusa", "Hania Rani"), ("Singularity", "Jon Hopkins")]
         for title, sub in recents:
             card = QFrame()
             card.setFixedSize(150, 195)
             card.setStyleSheet("background-color: #181818; border-radius: 6px; border: 1px solid #222;")
-
             c_layout = QVBoxLayout(card)
             c_layout.setContentsMargins(10, 10, 10, 10)
             c_layout.setSpacing(5)
-
             art = QLabel()
             art.setFixedSize(130, 130)
             art.setStyleSheet("background-color: #333; border-radius: 6px;")
-
             t = QLabel(title)
             t.setStyleSheet("color: white; font-size: 12px; font-weight: bold;")
             s = QLabel(sub)
             s.setStyleSheet("color: #888; font-size: 10px;")
-
             c_layout.addWidget(art, alignment=Qt.AlignCenter)
             c_layout.addWidget(t)
             c_layout.addWidget(s)
@@ -371,7 +325,6 @@ class MainWindow(QMainWindow):
         jb_layout.addStretch()
         layout.addLayout(jb_layout)
 
-        # --- LIVE JAMENDO TRACKS ---
         mf_head = QHBoxLayout()
         mf_title = QLabel("Trending on Jamendo")
         mf_title.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
@@ -388,26 +341,20 @@ class MainWindow(QMainWindow):
         else:
             mf_grid = QGridLayout()
             mf_grid.setSpacing(15)
-
             for idx, track in enumerate(tracks):
                 card = QFrame()
                 card.setObjectName("MixCard")
                 card.setFixedHeight(125)
                 c_layout = QHBoxLayout(card)
                 c_layout.setContentsMargins(12, 12, 12, 12)
-
                 art_label = QLabel()
                 art_label.setFixedSize(84, 84)
                 art_label.setStyleSheet("background-color: #333; border-radius: 6px;")
-
                 img_url = track.get("album_image") or track.get("image")
                 pixmap = self._pixmap_from_url(img_url, 84, 84)
-                if pixmap:
-                    art_label.setPixmap(pixmap)
-
+                if pixmap: art_label.setPixmap(pixmap)
                 text_col = QVBoxLayout()
                 text_col.setSpacing(3)
-
                 top_meta = QHBoxLayout()
                 tag = QLabel("TRACK")
                 tag.setStyleSheet("color: #0055ff; font-size: 8px; font-weight: bold; letter-spacing: 0.5px;")
@@ -417,61 +364,47 @@ class MainWindow(QMainWindow):
                 top_meta.addWidget(tag)
                 top_meta.addStretch()
                 top_meta.addWidget(dur_lbl)
-
                 full_name = track.get("name", "Unknown Track")
                 display_name = full_name if len(full_name) <= 18 else full_name[:16] + "..."
                 t = QLabel(display_name)
                 t.setToolTip(full_name)
                 t.setStyleSheet("color: white; font-size: 12px; font-weight: bold;")
-
                 artist_name = track.get("artist_name", "Unknown Artist")
                 display_artist = artist_name if len(artist_name) <= 22 else artist_name[:20] + "..."
                 s = QLabel(display_artist)
                 s.setToolTip(artist_name)
                 s.setStyleSheet("color: #888; font-size: 10px;")
-
                 text_col.addLayout(top_meta)
                 text_col.addWidget(t)
                 text_col.addWidget(s)
                 text_col.addStretch()
-
                 actions_col = QVBoxLayout()
                 actions_col.setSpacing(6)
                 actions_col.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-
                 heart_btn = QPushButton("♡")
                 heart_btn.setFixedSize(24, 24)
                 heart_btn.setCursor(Qt.PointingHandCursor)
                 self._apply_heart_style(heart_btn, self._is_liked(track))
                 heart_btn.clicked.connect(lambda checked, tr=track: self.toggle_like_track(tr))
                 self.home_heart_buttons.append((heart_btn, track))
-
                 play_btn = QPushButton("▶")
                 play_btn.setFixedSize(26, 26)
                 play_btn.setCursor(Qt.PointingHandCursor)
                 play_btn.setStyleSheet("background-color: #1a1a1a; color: #0055ff; border-radius: 13px; font-weight: bold; font-size: 10px;")
-
                 audio_url = track.get("audio")
                 if audio_url:
                     self.home_play_buttons.append((play_btn, audio_url))
                     self.home_duration_labels.append((dur_lbl, audio_url))
-                    play_btn.clicked.connect(
-                        lambda checked, tr=track, pl=tracks, i=idx: self.play_track(tr, pl, i)
-                    )
-
+                    play_btn.clicked.connect(lambda checked, tr=track, pl=tracks, i=idx: self.play_track(tr, pl, i))
                 actions_col.addWidget(heart_btn, alignment=Qt.AlignRight)
                 actions_col.addStretch()
                 actions_col.addWidget(play_btn, alignment=Qt.AlignRight)
-
                 c_layout.addWidget(art_label)
                 c_layout.addSpacing(8)
                 c_layout.addLayout(text_col, 1)
                 c_layout.addLayout(actions_col)
-
                 mf_grid.addWidget(card, idx // 4, idx % 4)
-
-            for col in range(4):
-                mf_grid.setColumnStretch(col, 1)
+            for col in range(4): mf_grid.setColumnStretch(col, 1)
             layout.addLayout(mf_grid)
 
         layout.addStretch()
@@ -486,7 +419,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setAlignment(Qt.AlignCenter)
         
-        # Store reference to label
+        # Store label reference for update later
         self.video_welcome_label = QLabel("Welcome, User!")
         self.video_welcome_label.setStyleSheet("color: #0055ff; font-size: 18px; font-weight: bold; margin-bottom: 10px;")
         
@@ -500,9 +433,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(sub, alignment=Qt.AlignCenter)
         return page
 
-    # ==========================================
-    # (The rest of the methods remain unchanged)
-    # ==========================================
+    # ... [Keep the rest of your methods exactly as they were] ...
     
     def _new_icon_canvas(self, size):
         pixmap = QPixmap(size * 2, size * 2)
@@ -519,11 +450,7 @@ class MainWindow(QMainWindow):
         bar_w = size * 0.12
         margin = size * 0.18
         p.drawRect(int(margin), int(margin), max(2, int(bar_w)), int(size - 2 * margin))
-        tri = QPolygonF([
-            QPointF(size - margin, margin),
-            QPointF(margin + bar_w + 1, size * 0.5),
-            QPointF(size - margin, size - margin),
-        ])
+        tri = QPolygonF([QPointF(size - margin, margin), QPointF(margin + bar_w + 1, size * 0.5), QPointF(size - margin, size - margin)])
         p.drawPolygon(tri)
         p.end()
         return QIcon(pixmap)
@@ -534,11 +461,7 @@ class MainWindow(QMainWindow):
         p.setBrush(QBrush(QColor(color)))
         bar_w = size * 0.12
         margin = size * 0.18
-        tri = QPolygonF([
-            QPointF(margin, margin),
-            QPointF(size - margin - bar_w - 1, size * 0.5),
-            QPointF(margin, size - margin),
-        ])
+        tri = QPolygonF([QPointF(margin, margin), QPointF(size - margin - bar_w - 1, size * 0.5), QPointF(margin, size - margin)])
         p.drawPolygon(tri)
         p.drawRect(int(size - margin - bar_w), int(margin), max(2, int(bar_w)), int(size - 2 * margin))
         p.end()
@@ -548,11 +471,7 @@ class MainWindow(QMainWindow):
         pixmap, p = self._new_icon_canvas(size)
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor(color)))
-        tri = QPolygonF([
-            QPointF(size * 0.28, size * 0.16),
-            QPointF(size * 0.84, size * 0.5),
-            QPointF(size * 0.28, size * 0.84),
-        ])
+        tri = QPolygonF([QPointF(size * 0.28, size * 0.16), QPointF(size * 0.84, size * 0.5), QPointF(size * 0.28, size * 0.84)])
         p.drawPolygon(tri)
         p.end()
         return QIcon(pixmap)
@@ -577,14 +496,7 @@ class MainWindow(QMainWindow):
         pen.setJoinStyle(Qt.RoundJoin)
         p.setPen(pen)
         p.setBrush(Qt.NoBrush)
-        speaker = QPolygonF([
-            QPointF(2.0, 6.0),
-            QPointF(5.0, 6.0),
-            QPointF(8.5, 3.0),
-            QPointF(8.5, 13.0),
-            QPointF(5.0, 10.0),
-            QPointF(2.0, 10.0),
-        ])
+        speaker = QPolygonF([QPointF(2.0, 6.0), QPointF(5.0, 6.0), QPointF(8.5, 3.0), QPointF(8.5, 13.0), QPointF(5.0, 10.0), QPointF(2.0, 10.0)])
         p.drawPolygon(speaker)
         if muted:
             p.drawLine(QPointF(11.0, 5.5), QPointF(14.5, 10.5))
@@ -596,15 +508,8 @@ class MainWindow(QMainWindow):
         return QIcon(pixmap)
 
     def _update_nav_pills(self, active_index):
-        active_style = (
-            "QPushButton { background-color: #ffffff; color: #000000; border: none; "
-            "border-radius: 16px; padding: 6px 16px; font-size: 12px; font-weight: bold; }"
-        )
-        inactive_style = (
-            "QPushButton { background-color: #242424; color: #ffffff; border: none; "
-            "border-radius: 16px; padding: 6px 16px; font-size: 12px; font-weight: 500; }"
-            "QPushButton:hover { background-color: #333333; }"
-        )
+        active_style = "QPushButton { background-color: #ffffff; color: #000000; border: none; border-radius: 16px; padding: 6px 16px; font-size: 12px; font-weight: bold; }"
+        inactive_style = "QPushButton { background-color: #242424; color: #ffffff; border: none; border-radius: 16px; padding: 6px 16px; font-size: 12px; font-weight: 500; } QPushButton:hover { background-color: #333333; }"
         for i, btn in enumerate(self.nav_buttons):
             btn.setStyleSheet(active_style if i == active_index else inactive_style)
 
@@ -614,15 +519,12 @@ class MainWindow(QMainWindow):
         self._update_nav_pills(index)
 
     def _pixmap_from_url(self, url, width, height):
-        if not url:
-            return None
+        if not url: return None
         pixmap = self._pixmap_cache.get(url)
         if pixmap is None:
             pixmap = jamendo_api.download_image(url)
-            if pixmap:
-                self._pixmap_cache[url] = pixmap
-        if pixmap:
-            return pixmap.scaled(width, height, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            if pixmap: self._pixmap_cache[url] = pixmap
+        if pixmap: return pixmap.scaled(width, height, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
         return None
 
     def _track_key(self, track):
@@ -634,11 +536,7 @@ class MainWindow(QMainWindow):
 
     def _apply_heart_style(self, btn, liked):
         btn.setText("♥" if liked else "♡")
-        btn.setStyleSheet(
-            "background: transparent; border: none; color: #ff5555; font-size: 14px;"
-            if liked
-            else "background: transparent; border: none; color: #888; font-size: 14px;"
-        )
+        btn.setStyleSheet("background: transparent; border: none; color: #ff5555; font-size: 14px;" if liked else "background: transparent; border: none; color: #888; font-size: 14px;")
 
     def _sync_heart_buttons(self):
         for btn, track in self.home_heart_buttons + self.search_heart_buttons + self.library_heart_buttons:
@@ -652,23 +550,18 @@ class MainWindow(QMainWindow):
                 self._apply_heart_style(self.player_like_btn, False)
 
     def toggle_like_track(self, track):
-        if not track:
-            return
+        if not track: return
         key = self._track_key(track)
-        if not key:
-            return
+        if not key: return
         existing_idx = next((i for i, t in enumerate(self.liked_tracks) if self._track_key(t) == key), None)
-        if existing_idx is not None:
-            self.liked_tracks.pop(existing_idx)
-        else:
-            self.liked_tracks.insert(0, dict(track))
+        if existing_idx is not None: self.liked_tracks.pop(existing_idx)
+        else: self.liked_tracks.insert(0, dict(track))
         self._sync_heart_buttons()
         self._refresh_library_liked_songs()
 
     def _record_recently_played(self, track):
         key = self._track_key(track)
-        if not key:
-            return
+        if not key: return
         self.recently_played = [t for t in self.recently_played if self._track_key(t) != key]
         self.recently_played.insert(0, dict(track))
         self.recently_played = self.recently_played[:12]
@@ -684,18 +577,10 @@ class MainWindow(QMainWindow):
             self.current_playlist = list(playlist)
             self.current_index = index
         self.current_track = dict(track)
-        self.play_jamendo_track(
-            audio_url,
-            track_name,
-            artist_name,
-            duration_sec=duration_sec,
-            img_url=img_url,
-            track_obj=track,
-        )
+        self.play_jamendo_track(audio_url, track_name, artist_name, duration_sec=duration_sec, img_url=img_url, track_obj=track)
 
     def play_jamendo_track(self, audio_url, track_name, artist_name, duration_sec=0, img_url=None, track_obj=None):
         if not audio_url or not audio_url.startswith("http"):
-            print(f"[PLAYER ERROR] Invalid audio URL: {audio_url}")
             return
         same_track = self.current_audio_url == audio_url
         if same_track and self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
@@ -703,23 +588,14 @@ class MainWindow(QMainWindow):
             return
         if not same_track:
             self.current_audio_url = audio_url
-            if track_obj is not None:
-                self.current_track = dict(track_obj)
+            if track_obj is not None: self.current_track = dict(track_obj)
             else:
-                self.current_track = {
-                    "audio": audio_url,
-                    "name": track_name,
-                    "artist_name": artist_name,
-                    "duration": duration_sec,
-                    "album_image": img_url,
-                }
+                self.current_track = {"audio": audio_url, "name": track_name, "artist_name": artist_name, "duration": duration_sec, "album_image": img_url}
             self.player_title.setText(track_name)
             self.player_artist.setText(artist_name or "Unknown Artist")
             scaled_art = self._pixmap_from_url(img_url, 50, 50)
-            if scaled_art:
-                self.player_art.setPixmap(scaled_art)
-            else:
-                self.player_art.clear()
+            if scaled_art: self.player_art.setPixmap(scaled_art)
+            else: self.player_art.clear()
             self._expected_duration_ms = max(0, int(duration_sec or 0) * 1000)
             self.progress_slider.blockSignals(True)
             self.progress_slider.setRange(0, self._expected_duration_ms)
@@ -733,8 +609,7 @@ class MainWindow(QMainWindow):
         self.media_player.play()
 
     def play_previous_track(self):
-        if not self.current_playlist:
-            return
+        if not self.current_playlist: return
         if self.media_player.position() > 3000:
             self.media_player.setPosition(0)
             return
@@ -743,19 +618,15 @@ class MainWindow(QMainWindow):
             self.play_track(self.current_playlist[new_idx], self.current_playlist, new_idx)
 
     def play_next_track(self):
-        if not self.current_playlist:
-            return
+        if not self.current_playlist: return
         if self.current_index + 1 < len(self.current_playlist):
             new_idx = self.current_index + 1
             self.play_track(self.current_playlist[new_idx], self.current_playlist, new_idx)
 
     def toggle_play_pause(self):
-        if not self.current_audio_url:
-            return
-        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self.media_player.pause()
-        else:
-            self.media_player.play()
+        if not self.current_audio_url: return
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState: self.media_player.pause()
+        else: self.media_player.play()
 
     def _refresh_play_buttons(self, playing):
         if hasattr(self, "play_pause_btn"):
@@ -768,72 +639,55 @@ class MainWindow(QMainWindow):
         self._refresh_play_buttons(playing)
 
     def _on_media_status_changed(self, status):
-        if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            self.play_next_track()
+        if status == QMediaPlayer.MediaStatus.EndOfMedia: self.play_next_track()
 
     def _format_time(self, ms):
         seconds = max(0, int(ms // 1000))
         return f"{seconds // 60:02d}:{seconds % 60:02d}"
 
     def _on_position_changed(self, position):
-        if self._seeking or not hasattr(self, "progress_slider"):
-            return
-        if position > self.progress_slider.maximum():
-            self.progress_slider.setMaximum(position)
+        if self._seeking or not hasattr(self, "progress_slider"): return
+        if position > self.progress_slider.maximum(): self.progress_slider.setMaximum(position)
         self.progress_slider.blockSignals(True)
         self.progress_slider.setValue(position)
         self.progress_slider.blockSignals(False)
         self.time_now.setText(self._format_time(position))
 
     def _on_duration_changed(self, duration):
-        if not hasattr(self, "progress_slider"):
-            return
+        if not hasattr(self, "progress_slider"): return
         effective_duration = duration if duration > 0 else self._expected_duration_ms
         self.progress_slider.setMaximum(max(effective_duration, 0))
         self.time_total.setText(self._format_time(effective_duration))
         if duration > 0:
             formatted = self._format_time(duration)
             for lbl, url in self.home_duration_labels + self.search_duration_labels + self.library_duration_labels:
-                if url == self.current_audio_url:
-                    lbl.setText(formatted)
+                if url == self.current_audio_url: lbl.setText(formatted)
 
-    def _on_seek_pressed(self):
-        self._seeking = True
-
+    def _on_seek_pressed(self): self._seeking = True
     def _on_seek_released(self):
         self._seeking = False
         self.media_player.setPosition(self.progress_slider.value())
-
-    def _on_seek_moved(self, value):
-        self.time_now.setText(self._format_time(value))
+    def _on_seek_moved(self, value): self.time_now.setText(self._format_time(value))
 
     def _on_volume_changed(self, value):
         self.audio_output.setVolume(value / 100)
-        if value > 0:
-            self._last_volume = value
-        if hasattr(self, "vol_btn"):
-            self.vol_btn.setIcon(self._vol_muted_icon if value == 0 else self._vol_icon)
+        if value > 0: self._last_volume = value
+        if hasattr(self, "vol_btn"): self.vol_btn.setIcon(self._vol_muted_icon if value == 0 else self._vol_icon)
 
     def _toggle_mute(self):
         if self.vol_slider.value() > 0:
             self._last_volume = self.vol_slider.value()
             self.vol_slider.setValue(0)
-        else:
-            self.vol_slider.setValue(self._last_volume or 80)
+        else: self.vol_slider.setValue(self._last_volume or 80)
 
     def _clear_layout(self, layout):
         while layout.count():
             item = layout.takeAt(0)
             widget = item.widget()
             child_layout = item.layout()
-            if widget is not None:
-                widget.deleteLater()
-            elif child_layout is not None:
-                self._clear_layout(child_layout)
+            if widget is not None: widget.deleteLater()
+            elif child_layout is not None: self._clear_layout(child_layout)
 
-    # ==========================================
-    # PAGE 2: SEARCH
-    # ==========================================
     def build_search_page(self):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -915,8 +769,7 @@ class MainWindow(QMainWindow):
 
     def _on_header_search(self):
         query = self.header_search.text().strip()
-        if not query:
-            return
+        if not query: return
         self._set_top_mode(0)
         self.set_page(1)
         self._quick_search(query)
@@ -957,8 +810,7 @@ class MainWindow(QMainWindow):
 
     def _add_search_history(self, query):
         clean = (query or "").strip()
-        if not clean:
-            return
+        if not clean: return
         self.search_history = [h for h in self.search_history if h.lower() != clean.lower()]
         self.search_history.insert(0, clean)
         self.search_history = self.search_history[:10]
@@ -977,10 +829,7 @@ class MainWindow(QMainWindow):
         for query in self.search_history:
             chip = QPushButton(query)
             chip.setCursor(Qt.PointingHandCursor)
-            chip.setStyleSheet(
-                "background-color: #1a1a1a; color: #ddd; border: 1px solid #333; "
-                "border-radius: 14px; padding: 4px 12px; font-size: 11px;"
-            )
+            chip.setStyleSheet("background-color: #1a1a1a; color: #ddd; border: 1px solid #333; border-radius: 14px; padding: 4px 12px; font-size: 11px;")
             chip.clicked.connect(lambda checked, q=query: self._quick_search(q))
             self.search_history_chips_layout.addWidget(chip)
         self.search_history_chips_layout.addStretch()
@@ -1010,8 +859,7 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _on_search_finished(self, request_id, query, results, image_bytes):
-        if request_id != self._search_request_id:
-            return
+        if request_id != self._search_request_id: return
         for url, raw in image_bytes.items():
             if url not in self._pixmap_cache:
                 img = QImage()
@@ -1053,8 +901,7 @@ class MainWindow(QMainWindow):
                 art_img.setFixedSize(130, 130)
                 art_img.setStyleSheet("background-color: #333; border-radius: 6px;")
                 pixmap = self._pixmap_from_url(artist.get("image"), 130, 130)
-                if pixmap:
-                    art_img.setPixmap(pixmap)
+                if pixmap: art_img.setPixmap(pixmap)
                 info_layout = QVBoxLayout()
                 info_layout.setAlignment(Qt.AlignVCenter)
                 artist_tag = QLabel("ARTIST")
@@ -1071,19 +918,11 @@ class MainWindow(QMainWindow):
                 main_play_btn = QPushButton()
                 main_play_btn.setFixedSize(44, 44)
                 main_play_btn.setCursor(Qt.PointingHandCursor)
-                main_play_btn.setStyleSheet(
-                    "QPushButton { background-color: #ffffff; border: none; border-radius: 22px; }"
-                    "QPushButton:hover { background-color: #e6e6e6; }"
-                    "QPushButton:disabled { background-color: #333333; }"
-                )
+                main_play_btn.setStyleSheet("QPushButton { background-color: #ffffff; border: none; border-radius: 22px; } QPushButton:hover { background-color: #e6e6e6; } QPushButton:disabled { background-color: #333333; }")
                 main_play_btn.setIcon(self._make_play_icon(18, "#000000"))
                 main_play_btn.setIconSize(QSize(18, 18))
-                if artist_tracks:
-                    main_play_btn.clicked.connect(
-                        lambda checked, tr=artist_tracks[0], pl=artist_tracks: self.play_track(tr, pl, 0)
-                    )
-                else:
-                    main_play_btn.setEnabled(False)
+                if artist_tracks: main_play_btn.clicked.connect(lambda checked, tr=artist_tracks[0], pl=artist_tracks: self.play_track(tr, pl, 0))
+                else: main_play_btn.setEnabled(False)
                 tracks_layout = QVBoxLayout()
                 tracks_layout.setSpacing(10)
                 if not artist_tracks:
@@ -1113,9 +952,7 @@ class MainWindow(QMainWindow):
                         if audio_url:
                             self.search_play_buttons.append((t_play, audio_url))
                             self.search_duration_labels.append((t_time, audio_url))
-                            t_play.clicked.connect(
-                                lambda checked, item=tr, pl=artist_tracks, i=idx: self.play_track(item, pl, i)
-                            )
+                            t_play.clicked.connect(lambda checked, item=tr, pl=artist_tracks, i=idx: self.play_track(item, pl, i))
                         t_row.addWidget(t_play)
                         t_row.addWidget(t_name, 1)
                         t_row.addWidget(t_album, 1)
@@ -1138,14 +975,7 @@ class MainWindow(QMainWindow):
             sc_layout.setContentsMargins(16, 12, 16, 12)
             sc_layout.setSpacing(6)
             for idx, tr in enumerate(tracks):
-                row = self._build_song_row(
-                    tr,
-                    tracks,
-                    idx,
-                    self.search_play_buttons,
-                    self.search_duration_labels,
-                    self.search_heart_buttons,
-                )
+                row = self._build_song_row(tr, tracks, idx, self.search_play_buttons, self.search_duration_labels, self.search_heart_buttons)
                 sc_layout.addWidget(row)
             self.search_results_layout.addWidget(songs_container)
         playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
@@ -1166,8 +996,7 @@ class MainWindow(QMainWindow):
         thumb.setStyleSheet("background-color: #333; border-radius: 4px;")
         img_url = tr.get("album_image") or tr.get("image")
         pixmap = self._pixmap_from_url(img_url, 36, 36)
-        if pixmap:
-            thumb.setPixmap(pixmap)
+        if pixmap: thumb.setPixmap(pixmap)
         title_col = QVBoxLayout()
         title_col.setSpacing(1)
         title_lbl = QLabel(tr.get("name", "Unknown Track"))
@@ -1190,9 +1019,7 @@ class MainWindow(QMainWindow):
         if audio_url:
             play_list.append((play_btn, audio_url))
             dur_list.append((dur_lbl, audio_url))
-            play_btn.clicked.connect(
-                lambda checked, item=tr, pl=playlist, i=idx: self.play_track(item, pl, i)
-            )
+            play_btn.clicked.connect(lambda checked, item=tr, pl=playlist, i=idx: self.play_track(item, pl, i))
         r_layout.addWidget(play_btn)
         r_layout.addWidget(thumb)
         r_layout.addLayout(title_col, 2)
@@ -1201,9 +1028,6 @@ class MainWindow(QMainWindow):
         r_layout.addWidget(heart_btn)
         return row
 
-    # ==========================================
-    # PAGE 3: LIBRARY
-    # ==========================================
     def build_library_page(self):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1258,11 +1082,7 @@ class MainWindow(QMainWindow):
         self.liked_banner_play_btn = QPushButton()
         self.liked_banner_play_btn.setFixedSize(40, 40)
         self.liked_banner_play_btn.setCursor(Qt.PointingHandCursor)
-        self.liked_banner_play_btn.setStyleSheet(
-            "QPushButton { background-color: white; border: none; border-radius: 20px; }"
-            "QPushButton:hover { background-color: #e6e6e6; }"
-            "QPushButton:disabled { background-color: #cccccc; }"
-        )
+        self.liked_banner_play_btn.setStyleSheet("QPushButton { background-color: white; border: none; border-radius: 20px; } QPushButton:hover { background-color: #e6e6e6; } QPushButton:disabled { background-color: #cccccc; }")
         self.liked_banner_play_btn.setIcon(self._make_play_icon(16, "#0055ff"))
         self.liked_banner_play_btn.setIconSize(QSize(16, 16))
         self.liked_banner_play_btn.clicked.connect(self._play_liked_songs)
@@ -1302,8 +1122,7 @@ class MainWindow(QMainWindow):
         self.recent_section_widget.setVisible(mode in ("All", "Recently Played"))
 
     def _play_liked_songs(self):
-        if self.liked_tracks:
-            self.play_track(self.liked_tracks[0], self.liked_tracks, 0)
+        if self.liked_tracks: self.play_track(self.liked_tracks[0], self.liked_tracks, 0)
 
     def _refresh_library_liked_songs(self):
         self.library_play_buttons.clear()
@@ -1319,9 +1138,7 @@ class MainWindow(QMainWindow):
             self.liked_songs_container.addWidget(empty_lbl)
             return
         latest = self.liked_tracks[0]
-        self.liked_banner_sub.setText(
-            f"{count} liked song{'s' if count != 1 else ''} · Latest: {latest.get('name', '')} by {latest.get('artist_name', '')}"
-        )
+        self.liked_banner_sub.setText(f"{count} liked song{'s' if count != 1 else ''} · Latest: {latest.get('name', '')} by {latest.get('artist_name', '')}")
         self.liked_banner_play_btn.setEnabled(True)
         table = QFrame()
         table.setObjectName("TableContainer")
@@ -1329,14 +1146,7 @@ class MainWindow(QMainWindow):
         t_layout.setContentsMargins(16, 12, 16, 12)
         t_layout.setSpacing(6)
         for idx, tr in enumerate(self.liked_tracks):
-            row = self._build_song_row(
-                tr,
-                self.liked_tracks,
-                idx,
-                self.library_play_buttons,
-                self.library_duration_labels,
-                self.library_heart_buttons,
-            )
+            row = self._build_song_row(tr, self.liked_tracks, idx, self.library_play_buttons, self.library_duration_labels, self.library_heart_buttons)
             t_layout.addWidget(row)
         self.liked_songs_container.addWidget(table)
         playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
@@ -1365,8 +1175,7 @@ class MainWindow(QMainWindow):
             art.setStyleSheet("background-color: #222; border-radius: 4px;")
             img_url = tr.get("album_image") or tr.get("image")
             pixmap = self._pixmap_from_url(img_url, 50, 50)
-            if pixmap:
-                art.setPixmap(pixmap)
+            if pixmap: art.setPixmap(pixmap)
             info = QVBoxLayout()
             info.setSpacing(2)
             info.setAlignment(Qt.AlignVCenter)
@@ -1384,8 +1193,7 @@ class MainWindow(QMainWindow):
             c_layout.addWidget(art)
             c_layout.addLayout(info, 1)
             grid.addWidget(card, idx // 4, idx % 4)
-        for col in range(4):
-            grid.setColumnStretch(col, 1)
+        for col in range(4): grid.setColumnStretch(col, 1)
         self.rp_container_layout.addLayout(grid)
 
     def create_player_bar(self):
@@ -1427,10 +1235,7 @@ class MainWindow(QMainWindow):
         controls = QHBoxLayout()
         controls.setAlignment(Qt.AlignCenter)
         controls.setSpacing(14)
-        skip_btn_style = (
-            "QPushButton { background: transparent; border: none; border-radius: 14px; }"
-            "QPushButton:hover { background-color: rgba(255, 255, 255, 0.08); }"
-        )
+        skip_btn_style = "QPushButton { background: transparent; border: none; border-radius: 14px; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.08); }"
         prev_btn = QPushButton()
         prev_btn.setFixedSize(28, 28)
         prev_btn.setCursor(Qt.PointingHandCursor)
@@ -1442,10 +1247,7 @@ class MainWindow(QMainWindow):
         self.play_pause_btn = QPushButton()
         self.play_pause_btn.setFixedSize(36, 36)
         self.play_pause_btn.setCursor(Qt.PointingHandCursor)
-        self.play_pause_btn.setStyleSheet(
-            "QPushButton { background-color: #ffffff; border: none; border-radius: 18px; }"
-            "QPushButton:hover { background-color: #e6e6e6; }"
-        )
+        self.play_pause_btn.setStyleSheet("QPushButton { background-color: #ffffff; border: none; border-radius: 18px; } QPushButton:hover { background-color: #e6e6e6; }")
         self.play_pause_btn.setIcon(self._play_icon)
         self.play_pause_btn.setIconSize(QSize(16, 16))
         self.play_pause_btn.clicked.connect(self.toggle_play_pause)

@@ -415,3 +415,25 @@ if __name__ == "__main__":
     login_window.show()
     
     sys.exit(app.exec())
+    
+    # login.py (at the very bottom)
+
+if __name__ == "__main__":
+    from dashboard import MainWindow
+    
+    app = QApplication(sys.argv)
+    login_window = LoginWindow()
+    dashboard_window = None
+
+    def on_login_success(username):
+        global dashboard_window
+        print(f"[MAIN] Login successful. Received username: '{username}'")
+        
+        # This line creates the window with the username
+        dashboard_window = MainWindow(username=username) 
+        dashboard_window.show()
+        login_window.close()
+
+    login_window.login_successful.connect(on_login_success)
+    login_window.show()
+    sys.exit(app.exec())
