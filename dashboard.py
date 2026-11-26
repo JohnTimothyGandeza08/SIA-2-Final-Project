@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QScrollArea, QFrame,
     QSlider, QGridLayout, QStackedWidget
 )
-from PySide6.QtCore import Qt, QPointF, QUrl, QThread, Signal, QByteArray
+from PySide6.QtCore import Qt, QPointF, QUrl, QThread, Signal, QByteArray, QTimer
 from PySide6.QtGui import QPainter, QColor, QPolygonF, QBrush, QPixmap, QImage
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
@@ -35,7 +35,7 @@ class SearchWorker(QThread):
     def run(self):
         results = jamendo_api.search_catalog(
             self.query,
-            artist_limit=4,
+            artist_limit=6,
             artist_tracks_limit=6,
             track_limit=20,
         )
@@ -79,6 +79,7 @@ class MainWindow(QMainWindow):
         self.media_player.setAudioOutput(self.audio_output)
 
         self.current_audio_url = ""
+        self.current_track = None
         self.current_playlist = []
         self.current_index = -1
         self._expected_duration_ms = 0
@@ -86,14 +87,33 @@ class MainWindow(QMainWindow):
 
         self.home_play_buttons = []
         self.search_play_buttons = []
+        self.library_play_buttons = []
+
         self.home_duration_labels = []
         self.search_duration_labels = []
+        self.library_duration_labels = []
+
+        self.home_heart_buttons = []
+        self.search_heart_buttons = []
+        self.library_heart_buttons = []
 
         self._pixmap_cache = {}
         self._search_request_id = 0
         self._active_workers = set()
         self.search_filter = "ALL"
         self.last_search_results = None
+        self.search_history = []
+
+        self.recently_played = []
+        self.liked_tracks = []
+        self.library_filter = "All"
+
+        self.search_debounce_timer = QTimer(self)
+        self.search_debounce_timer.setSingleShot(True)
+        self.search_debounce_timer.setInterval(350)
+        self.search_debounce_timer.timeout.connect(
+            lambda: self.run_search(self.big_search.text())
+        )
 
         self.media_player.playbackStateChanged.connect(self._on_playback_state_changed)
         self.media_player.mediaStatusChanged.connect(self._on_media_status_changed)
@@ -211,6 +231,57 @@ class MainWindow(QMainWindow):
             return pixmap.scaled(width, height, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
         return None
 
+    def _track_key(self, track):
+        return track.get("audio") or str(track.get("id") or "")
+
+    def _is_liked(self, track):
+        key = self._track_key(track)
+        return bool(key) and any(self._track_key(t) == key for t in self.liked_tracks)
+
+    def _apply_heart_style(self, btn, liked):
+        btn.setText("♥" if liked else "♡")
+        btn.setStyleSheet(
+            "background: transparent; border: none; color: #ff5555; font-size: 14px;"
+            if liked
+            else "background: transparent; border: none; color: #888; font-size: 14px;"
+        )
+
+    def _sync_heart_buttons(self):
+        for btn, track in self.home_heart_buttons + self.search_heart_buttons + self.library_heart_buttons:
+            self._apply_heart_style(btn, self._is_liked(track))
+        if hasattr(self, "player_like_btn"):
+            if self.current_track:
+                self.player_like_btn.setEnabled(True)
+                self._apply_heart_style(self.player_like_btn, self._is_liked(self.current_track))
+            else:
+                self.player_like_btn.setEnabled(False)
+                self._apply_heart_style(self.player_like_btn, False)
+
+    def toggle_like_track(self, track):
+        if not track:
+            return
+        key = self._track_key(track)
+        if not key:
+            return
+
+        existing_idx = next((i for i, t in enumerate(self.liked_tracks) if self._track_key(t) == key), None)
+        if existing_idx is not None:
+            self.liked_tracks.pop(existing_idx)
+        else:
+            self.liked_tracks.insert(0, dict(track))
+
+        self._sync_heart_buttons()
+        self._refresh_library_liked_songs()
+
+    def _record_recently_played(self, track):
+        key = self._track_key(track)
+        if not key:
+            return
+        self.recently_played = [t for t in self.recently_played if self._track_key(t) != key]
+        self.recently_played.insert(0, dict(track))
+        self.recently_played = self.recently_played[:12]
+        self._refresh_library_recently_played()
+
     def play_track(self, track, playlist=None, index=0):
         audio_url = track.get("audio")
         track_name = track.get("name", "Unknown Track")
@@ -222,15 +293,17 @@ class MainWindow(QMainWindow):
             self.current_playlist = list(playlist)
             self.current_index = index
 
+        self.current_track = dict(track)
         self.play_jamendo_track(
             audio_url,
             track_name,
             artist_name,
             duration_sec=duration_sec,
             img_url=img_url,
+            track_obj=track,
         )
 
-    def play_jamendo_track(self, audio_url, track_name, artist_name, duration_sec=0, img_url=None):
+    def play_jamendo_track(self, audio_url, track_name, artist_name, duration_sec=0, img_url=None, track_obj=None):
         if not audio_url or not audio_url.startswith("http"):
             print(f"[PLAYER ERROR] Invalid audio URL: {audio_url}")
             return
@@ -243,10 +316,20 @@ class MainWindow(QMainWindow):
         if not same_track:
             print(f"Playing: {track_name} from {audio_url}")
             self.current_audio_url = audio_url
+            if track_obj is not None:
+                self.current_track = dict(track_obj)
+            else:
+                self.current_track = {
+                    "audio": audio_url,
+                    "name": track_name,
+                    "artist_name": artist_name,
+                    "duration": duration_sec,
+                    "album_image": img_url,
+                }
+
             self.player_title.setText(track_name)
             self.player_artist.setText(artist_name or "Unknown Artist")
 
-            # Update player bar art
             scaled_art = self._pixmap_from_url(img_url, 50, 50)
             if scaled_art:
                 self.player_art.setPixmap(scaled_art)
@@ -262,6 +345,8 @@ class MainWindow(QMainWindow):
             self.time_now.setText("00:00")
             self.time_total.setText(self._format_time(self._expected_duration_ms))
 
+            self._sync_heart_buttons()
+            self._record_recently_played(self.current_track)
             self.media_player.setSource(QUrl(audio_url))
 
         self.media_player.play()
@@ -294,7 +379,7 @@ class MainWindow(QMainWindow):
     def _refresh_play_buttons(self, playing):
         if hasattr(self, "play_pause_btn"):
             self.play_pause_btn.setText("⏸" if playing else "▶")
-        for btn, url in self.home_play_buttons + self.search_play_buttons:
+        for btn, url in self.home_play_buttons + self.search_play_buttons + self.library_play_buttons:
             btn.setText("⏸" if playing and url == self.current_audio_url else "▶")
 
     def _on_playback_state_changed(self, state):
@@ -328,7 +413,7 @@ class MainWindow(QMainWindow):
 
         if duration > 0:
             formatted = self._format_time(duration)
-            for lbl, url in self.home_duration_labels + self.search_duration_labels:
+            for lbl, url in self.home_duration_labels + self.search_duration_labels + self.library_duration_labels:
                 if url == self.current_audio_url:
                     lbl.setText(formatted)
 
@@ -345,22 +430,15 @@ class MainWindow(QMainWindow):
     def _on_volume_changed(self, value):
         self.audio_output.setVolume(value / 100)
 
-    def _create_play_icon(self, size=40, color="#ffffff", bg_color="#0055ff"):
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QBrush(QColor(bg_color)))
-        painter.setPen(Qt.NoPen)
-        painter.drawEllipse(0, 0, size, size)
-        painter.setBrush(QBrush(QColor(color)))
-        triangle = QPolygonF([QPointF(size * 0.38, size * 0.28), QPointF(size * 0.38, size * 0.72), QPointF(size * 0.72, size * 0.5)])
-        painter.drawPolygon(triangle)
-        painter.end()
-        lbl = QLabel()
-        lbl.setPixmap(pixmap)
-        lbl.setFixedSize(size, size)
-        return lbl
+    def _clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            child_layout = item.layout()
+            if widget is not None:
+                widget.deleteLater()
+            elif child_layout is not None:
+                self._clear_layout(child_layout)
 
     # ==========================================
     # PAGE 1: HOME
@@ -525,7 +603,18 @@ class MainWindow(QMainWindow):
                 text_col.addWidget(s)
                 text_col.addStretch()
 
-                # Play Button
+                # Action buttons (Like + Play)
+                actions_col = QVBoxLayout()
+                actions_col.setSpacing(6)
+                actions_col.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+                heart_btn = QPushButton("♡")
+                heart_btn.setFixedSize(24, 24)
+                heart_btn.setCursor(Qt.PointingHandCursor)
+                self._apply_heart_style(heart_btn, self._is_liked(track))
+                heart_btn.clicked.connect(lambda checked, tr=track: self.toggle_like_track(tr))
+                self.home_heart_buttons.append((heart_btn, track))
+
                 play_btn = QPushButton("▶")
                 play_btn.setFixedSize(26, 26)
                 play_btn.setCursor(Qt.PointingHandCursor)
@@ -539,10 +628,14 @@ class MainWindow(QMainWindow):
                         lambda checked, tr=track, pl=tracks, i=idx: self.play_track(tr, pl, i)
                     )
 
+                actions_col.addWidget(heart_btn, alignment=Qt.AlignRight)
+                actions_col.addStretch()
+                actions_col.addWidget(play_btn, alignment=Qt.AlignRight)
+
                 c_layout.addWidget(art_label)
                 c_layout.addSpacing(8)
                 c_layout.addLayout(text_col, 1)
-                c_layout.addWidget(play_btn, alignment=Qt.AlignBottom)
+                c_layout.addLayout(actions_col)
 
                 mf_grid.addWidget(card, idx // 4, idx % 4)
 
@@ -566,7 +659,7 @@ class MainWindow(QMainWindow):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(30, 20, 30, 20)
-        layout.setSpacing(18)
+        layout.setSpacing(16)
 
         # Search input row
         search_wrapper = QHBoxLayout()
@@ -576,7 +669,8 @@ class MainWindow(QMainWindow):
         self.big_search.setPlaceholderText("Search artists, songs, or tags...")
         self.big_search.setFixedSize(420, 38)
         self.big_search.setStyleSheet("font-size: 12px; padding-left: 15px; padding-right: 36px; border-radius: 6px; background-color: #1a1a1a; border: 1px solid #333;")
-        self.big_search.returnPressed.connect(lambda: self.run_search(self.big_search.text()))
+        self.big_search.textChanged.connect(self._on_big_search_text_changed)
+        self.big_search.returnPressed.connect(self._on_big_search_submit)
 
         clear_btn = QPushButton("✕")
         clear_btn.setCursor(Qt.PointingHandCursor)
@@ -592,7 +686,7 @@ class MainWindow(QMainWindow):
         search_go_btn.setFixedHeight(38)
         search_go_btn.setCursor(Qt.PointingHandCursor)
         search_go_btn.setStyleSheet("background-color: #0055ff; color: white; border-radius: 6px; padding: 0 16px; font-weight: bold; font-size: 12px;")
-        search_go_btn.clicked.connect(lambda: self.run_search(self.big_search.text()))
+        search_go_btn.clicked.connect(self._on_big_search_submit)
 
         search_wrapper.addWidget(self.big_search)
         search_wrapper.addSpacing(8)
@@ -615,7 +709,32 @@ class MainWindow(QMainWindow):
         layout.addLayout(search_wrapper)
         layout.addLayout(filter_wrapper)
 
-        self.search_status_label = QLabel("Search Jamendo for an artist or song title.")
+        # Search History section
+        self.search_history_section = QWidget()
+        sh_outer = QVBoxLayout(self.search_history_section)
+        sh_outer.setContentsMargins(0, 0, 0, 0)
+        sh_outer.setSpacing(8)
+
+        sh_header = QHBoxLayout()
+        sh_title = QLabel("SEARCH HISTORY")
+        sh_title.setObjectName("SectionTitle")
+        sh_clear_btn = QPushButton("Clear")
+        sh_clear_btn.setCursor(Qt.PointingHandCursor)
+        sh_clear_btn.setStyleSheet("background: transparent; border: none; color: #777; font-size: 11px;")
+        sh_clear_btn.clicked.connect(self._clear_search_history)
+        sh_header.addWidget(sh_title)
+        sh_header.addStretch()
+        sh_header.addWidget(sh_clear_btn)
+
+        self.search_history_chips_layout = QHBoxLayout()
+        self.search_history_chips_layout.setSpacing(8)
+
+        sh_outer.addLayout(sh_header)
+        sh_outer.addLayout(self.search_history_chips_layout)
+        layout.addWidget(self.search_history_section)
+        self._refresh_search_history_ui()
+
+        self.search_status_label = QLabel("Type to search Jamendo for artists and songs.")
         self.search_status_label.setAlignment(Qt.AlignCenter)
         self.search_status_label.setStyleSheet("color: #777; font-size: 11px;")
         layout.addWidget(self.search_status_label)
@@ -665,20 +784,72 @@ class MainWindow(QMainWindow):
         if not query:
             return
         self.set_page(1)
-        self.big_search.setText(query)
-        self.run_search(query)
+        self._quick_search(query)
+
+    def _on_big_search_text_changed(self, text):
+        query = text.strip()
+        if not query:
+            self.search_debounce_timer.stop()
+            self._search_request_id += 1
+            self.last_search_results = None
+            self._clear_search_results_ui()
+            self.search_status_label.setText("Type to search Jamendo for artists and songs.")
+            self.search_status_label.show()
+            return
+        self.search_debounce_timer.start()
+
+    def _on_big_search_submit(self):
+        self.search_debounce_timer.stop()
+        self.run_search(self.big_search.text())
 
     def _quick_search(self, query):
+        self.search_debounce_timer.stop()
+        self.big_search.blockSignals(True)
         self.big_search.setText(query)
+        self.big_search.blockSignals(False)
         self.run_search(query)
 
     def _clear_search(self):
+        self.search_debounce_timer.stop()
         self._search_request_id += 1
+        self.big_search.blockSignals(True)
         self.big_search.clear()
+        self.big_search.blockSignals(False)
         self.last_search_results = None
         self._clear_search_results_ui()
-        self.search_status_label.setText("Search Jamendo for an artist or song title.")
+        self.search_status_label.setText("Type to search Jamendo for artists and songs.")
         self.search_status_label.show()
+
+    def _add_search_history(self, query):
+        clean = (query or "").strip()
+        if not clean:
+            return
+        self.search_history = [h for h in self.search_history if h.lower() != clean.lower()]
+        self.search_history.insert(0, clean)
+        self.search_history = self.search_history[:10]
+        self._refresh_search_history_ui()
+
+    def _clear_search_history(self):
+        self.search_history.clear()
+        self._refresh_search_history_ui()
+
+    def _refresh_search_history_ui(self):
+        self._clear_layout(self.search_history_chips_layout)
+        if not self.search_history:
+            self.search_history_section.hide()
+            return
+
+        self.search_history_section.show()
+        for query in self.search_history:
+            chip = QPushButton(query)
+            chip.setCursor(Qt.PointingHandCursor)
+            chip.setStyleSheet(
+                "background-color: #1a1a1a; color: #ddd; border: 1px solid #333; "
+                "border-radius: 14px; padding: 4px 12px; font-size: 11px;"
+            )
+            chip.clicked.connect(lambda checked, q=query: self._quick_search(q))
+            self.search_history_chips_layout.addWidget(chip)
+        self.search_history_chips_layout.addStretch()
 
     def _set_search_filter(self, mode):
         self.search_filter = mode
@@ -717,32 +888,15 @@ class MainWindow(QMainWindow):
                 if img.loadFromData(QByteArray(raw)):
                     self._pixmap_cache[url] = QPixmap(img)
 
+        self._add_search_history(query)
         self.last_search_results = results
         self._render_search_results(results)
-
-    def _clear_layout(self, layout):
-        while layout.count():
-            item = layout.takeAt(0)
-            widget = item.widget()
-            child_layout = item.layout()
-            if widget is not None:
-                widget.deleteLater()
-            elif child_layout is not None:
-                self._clear_layout(child_layout)
 
     def _clear_search_results_ui(self):
         self.search_play_buttons.clear()
         self.search_duration_labels.clear()
+        self.search_heart_buttons.clear()
         self._clear_layout(self.search_results_layout)
-
-    def _toggle_heart(self, btn):
-        liked = btn.text() == "♥"
-        btn.setText("♡" if liked else "♥")
-        btn.setStyleSheet(
-            "background: transparent; border: none; color: #888; font-size: 13px;"
-            if liked
-            else "background: transparent; border: none; color: #ff5555; font-size: 13px;"
-        )
 
     def _render_search_results(self, results):
         self._clear_search_results_ui()
@@ -761,7 +915,7 @@ class MainWindow(QMainWindow):
 
         # --- ARTISTS + THEIR SONGS ---
         if show_artists and artists:
-            artists_lbl = QLabel("ARTISTS")
+            artists_lbl = QLabel(f"ARTISTS ({len(artists)})")
             artists_lbl.setObjectName("SectionTitle")
             self.search_results_layout.addWidget(artists_lbl)
 
@@ -833,8 +987,9 @@ class MainWindow(QMainWindow):
 
                         t_heart = QPushButton("♡")
                         t_heart.setCursor(Qt.PointingHandCursor)
-                        t_heart.setStyleSheet("background: transparent; border: none; color: #888; font-size: 13px;")
-                        t_heart.clicked.connect(lambda checked, b=t_heart: self._toggle_heart(b))
+                        self._apply_heart_style(t_heart, self._is_liked(tr))
+                        t_heart.clicked.connect(lambda checked, item=tr: self.toggle_like_track(item))
+                        self.search_heart_buttons.append((t_heart, tr))
 
                         audio_url = tr.get("audio")
                         if audio_url:
@@ -871,67 +1026,78 @@ class MainWindow(QMainWindow):
             sc_layout.setSpacing(6)
 
             for idx, tr in enumerate(tracks):
-                row = QFrame()
-                row.setObjectName("PlaylistRow")
-                r_layout = QHBoxLayout(row)
-                r_layout.setContentsMargins(4, 6, 4, 6)
-                r_layout.setSpacing(12)
-
-                play_btn = QPushButton("▶")
-                play_btn.setFixedSize(26, 26)
-                play_btn.setCursor(Qt.PointingHandCursor)
-                play_btn.setStyleSheet("background-color: #222; color: #0055ff; border: none; border-radius: 13px; font-size: 10px;")
-
-                thumb = QLabel()
-                thumb.setFixedSize(36, 36)
-                thumb.setStyleSheet("background-color: #333; border-radius: 4px;")
-                img_url = tr.get("album_image") or tr.get("image")
-                pixmap = self._pixmap_from_url(img_url, 36, 36)
-                if pixmap:
-                    thumb.setPixmap(pixmap)
-
-                title_col = QVBoxLayout()
-                title_col.setSpacing(1)
-                title_lbl = QLabel(tr.get("name", "Unknown Track"))
-                title_lbl.setStyleSheet("color: white; font-size: 12px; font-weight: bold;")
-                artist_lbl = QLabel(tr.get("artist_name", "Unknown Artist"))
-                artist_lbl.setStyleSheet("color: #888; font-size: 10px;")
-                title_col.addWidget(title_lbl)
-                title_col.addWidget(artist_lbl)
-
-                album_lbl = QLabel(tr.get("album_name") or "Single")
-                album_lbl.setStyleSheet("color: #777; font-size: 11px;")
-
-                dur_ms = max(0, int(tr.get("duration") or 0) * 1000)
-                dur_lbl = QLabel(self._format_time(dur_ms))
-                dur_lbl.setStyleSheet("color: #888; font-size: 11px;")
-
-                heart_btn = QPushButton("♡")
-                heart_btn.setCursor(Qt.PointingHandCursor)
-                heart_btn.setStyleSheet("background: transparent; border: none; color: #888; font-size: 13px;")
-                heart_btn.clicked.connect(lambda checked, b=heart_btn: self._toggle_heart(b))
-
-                audio_url = tr.get("audio")
-                if audio_url:
-                    self.search_play_buttons.append((play_btn, audio_url))
-                    self.search_duration_labels.append((dur_lbl, audio_url))
-                    play_btn.clicked.connect(
-                        lambda checked, item=tr, pl=tracks, i=idx: self.play_track(item, pl, i)
-                    )
-
-                r_layout.addWidget(play_btn)
-                r_layout.addWidget(thumb)
-                r_layout.addLayout(title_col, 2)
-                r_layout.addWidget(album_lbl, 1)
-                r_layout.addWidget(dur_lbl)
-                r_layout.addWidget(heart_btn)
+                row = self._build_song_row(
+                    tr,
+                    tracks,
+                    idx,
+                    self.search_play_buttons,
+                    self.search_duration_labels,
+                    self.search_heart_buttons,
+                )
                 sc_layout.addWidget(row)
 
             self.search_results_layout.addWidget(songs_container)
 
-        # Keep active play/pause icon state synchronized after re-rendering
         playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
         self._refresh_play_buttons(playing)
+
+    def _build_song_row(self, tr, playlist, idx, play_list, dur_list, heart_list):
+        row = QFrame()
+        row.setObjectName("PlaylistRow")
+        r_layout = QHBoxLayout(row)
+        r_layout.setContentsMargins(4, 6, 4, 6)
+        r_layout.setSpacing(12)
+
+        play_btn = QPushButton("▶")
+        play_btn.setFixedSize(26, 26)
+        play_btn.setCursor(Qt.PointingHandCursor)
+        play_btn.setStyleSheet("background-color: #222; color: #0055ff; border: none; border-radius: 13px; font-size: 10px;")
+
+        thumb = QLabel()
+        thumb.setFixedSize(36, 36)
+        thumb.setStyleSheet("background-color: #333; border-radius: 4px;")
+        img_url = tr.get("album_image") or tr.get("image")
+        pixmap = self._pixmap_from_url(img_url, 36, 36)
+        if pixmap:
+            thumb.setPixmap(pixmap)
+
+        title_col = QVBoxLayout()
+        title_col.setSpacing(1)
+        title_lbl = QLabel(tr.get("name", "Unknown Track"))
+        title_lbl.setStyleSheet("color: white; font-size: 12px; font-weight: bold;")
+        artist_lbl = QLabel(tr.get("artist_name", "Unknown Artist"))
+        artist_lbl.setStyleSheet("color: #888; font-size: 10px;")
+        title_col.addWidget(title_lbl)
+        title_col.addWidget(artist_lbl)
+
+        album_lbl = QLabel(tr.get("album_name") or "Single")
+        album_lbl.setStyleSheet("color: #777; font-size: 11px;")
+
+        dur_ms = max(0, int(tr.get("duration") or 0) * 1000)
+        dur_lbl = QLabel(self._format_time(dur_ms))
+        dur_lbl.setStyleSheet("color: #888; font-size: 11px;")
+
+        heart_btn = QPushButton("♡")
+        heart_btn.setCursor(Qt.PointingHandCursor)
+        self._apply_heart_style(heart_btn, self._is_liked(tr))
+        heart_btn.clicked.connect(lambda checked, item=tr: self.toggle_like_track(item))
+        heart_list.append((heart_btn, tr))
+
+        audio_url = tr.get("audio")
+        if audio_url:
+            play_list.append((play_btn, audio_url))
+            dur_list.append((dur_lbl, audio_url))
+            play_btn.clicked.connect(
+                lambda checked, item=tr, pl=playlist, i=idx: self.play_track(item, pl, i)
+            )
+
+        r_layout.addWidget(play_btn)
+        r_layout.addWidget(thumb)
+        r_layout.addLayout(title_col, 2)
+        r_layout.addWidget(album_lbl, 1)
+        r_layout.addWidget(dur_lbl)
+        r_layout.addWidget(heart_btn)
+        return row
 
     # ==========================================
     # PAGE 3: LIBRARY
@@ -940,7 +1106,7 @@ class MainWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("background: transparent; border: none;")
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
         content = QWidget()
         layout = QVBoxLayout(content)
@@ -952,12 +1118,22 @@ class MainWindow(QMainWindow):
         title.setStyleSheet("color: white; font-size: 22px; font-weight: bold;")
         title_row.addWidget(title)
         title_row.addStretch()
-        for i, f in enumerate(["All", "Playlists", "Artists", "Albums", "Podcasts"]):
+
+        self.library_filter_buttons = {}
+        for f in ["All", "Liked Songs", "Recently Played"]:
             btn = QPushButton(f)
-            btn.setObjectName("FilterBtnActive" if i == 0 else "FilterBtn")
+            btn.setObjectName("FilterBtnActive" if f == self.library_filter else "FilterBtn")
             btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(lambda checked, mode=f: self._set_library_filter(mode))
             title_row.addWidget(btn)
+            self.library_filter_buttons[f] = btn
         layout.addLayout(title_row)
+
+        # --- LIKED SONGS SECTION ---
+        self.liked_section_widget = QWidget()
+        liked_section_layout = QVBoxLayout(self.liked_section_widget)
+        liked_section_layout.setContentsMargins(0, 0, 0, 0)
+        liked_section_layout.setSpacing(12)
 
         liked_banner = QFrame()
         liked_banner.setObjectName("LikedBanner")
@@ -980,139 +1156,163 @@ class MainWindow(QMainWindow):
         lb_tag.setStyleSheet("color: #ccc; font-size: 9px; font-weight: bold; background: transparent;")
         lb_title = QLabel("Liked Songs")
         lb_title.setStyleSheet("color: white; font-size: 22px; font-weight: bold; background: transparent;")
-        lb_sub = QLabel("128 hearted tracks · Includes All Melody by Nils Frahm")
-        lb_sub.setStyleSheet("color: #eee; font-size: 10px; background: transparent;")
+        self.liked_banner_sub = QLabel("0 liked songs")
+        self.liked_banner_sub.setStyleSheet("color: #eee; font-size: 10px; background: transparent;")
         lb_text.addWidget(lb_tag)
         lb_text.addWidget(lb_title)
-        lb_text.addWidget(lb_sub)
+        lb_text.addWidget(self.liked_banner_sub)
 
-        lb_play = self._create_play_icon(40, bg_color="#ffffff", color="#0055ff")
+        self.liked_banner_play_btn = QPushButton("▶")
+        self.liked_banner_play_btn.setFixedSize(40, 40)
+        self.liked_banner_play_btn.setCursor(Qt.PointingHandCursor)
+        self.liked_banner_play_btn.setStyleSheet(
+            "background-color: white; color: #0055ff; border: none; "
+            "border-radius: 20px; font-size: 14px; font-weight: bold;"
+        )
+        self.liked_banner_play_btn.clicked.connect(self._play_liked_songs)
 
         lb_layout.addWidget(heart_box)
         lb_layout.addSpacing(15)
         lb_layout.addLayout(lb_text, 1)
-        lb_layout.addWidget(lb_play)
-        layout.addWidget(liked_banner)
+        lb_layout.addWidget(self.liked_banner_play_btn)
+        liked_section_layout.addWidget(liked_banner)
+
+        self.liked_songs_container = QVBoxLayout()
+        self.liked_songs_container.setSpacing(6)
+        liked_section_layout.addLayout(self.liked_songs_container)
+        layout.addWidget(self.liked_section_widget)
+
+        # --- RECENTLY PLAYED SECTION ---
+        self.recent_section_widget = QWidget()
+        recent_section_layout = QVBoxLayout(self.recent_section_widget)
+        recent_section_layout.setContentsMargins(0, 0, 0, 0)
+        recent_section_layout.setSpacing(12)
 
         rp_title = QLabel("Recently Played")
         rp_title.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
-        layout.addWidget(rp_title)
+        recent_section_layout.addWidget(rp_title)
 
-        rp_layout = QHBoxLayout()
-        rp_layout.setSpacing(15)
-        recents = [("All Melody", "Nils Frahm", "#222"), ("remember", "Ólafur Arnalds", "#fff"), ("On Giacometti", "Hania Rani", "#333"), ("Singularity", "Jon Hopkins", "#111")]
-        for title, sub, color in recents:
-            card = QFrame()
+        self.rp_container_layout = QVBoxLayout()
+        self.rp_container_layout.setSpacing(10)
+        recent_section_layout.addLayout(self.rp_container_layout)
+        layout.addWidget(self.recent_section_widget)
+
+        self._refresh_library_liked_songs()
+        self._refresh_library_recently_played()
+
+        layout.addStretch()
+        scroll.setWidget(content)
+        return scroll
+
+    def _set_library_filter(self, mode):
+        self.library_filter = mode
+        for f, btn in self.library_filter_buttons.items():
+            btn.setObjectName("FilterBtnActive" if f == mode else "FilterBtn")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+        self.liked_section_widget.setVisible(mode in ("All", "Liked Songs"))
+        self.recent_section_widget.setVisible(mode in ("All", "Recently Played"))
+
+    def _play_liked_songs(self):
+        if self.liked_tracks:
+            self.play_track(self.liked_tracks[0], self.liked_tracks, 0)
+
+    def _refresh_library_liked_songs(self):
+        self.library_play_buttons.clear()
+        self.library_duration_labels.clear()
+        self.library_heart_buttons.clear()
+        self._clear_layout(self.liked_songs_container)
+
+        count = len(self.liked_tracks)
+        if count == 0:
+            self.liked_banner_sub.setText("0 liked songs")
+            self.liked_banner_play_btn.setEnabled(False)
+            empty_lbl = QLabel("No liked songs yet. Click ♡ on any track to add it here.")
+            empty_lbl.setStyleSheet("color: #777; font-size: 11px; padding: 6px 0;")
+            self.liked_songs_container.addWidget(empty_lbl)
+            return
+
+        latest = self.liked_tracks[0]
+        self.liked_banner_sub.setText(
+            f"{count} liked song{'s' if count != 1 else ''} · Latest: {latest.get('name', '')} by {latest.get('artist_name', '')}"
+        )
+        self.liked_banner_play_btn.setEnabled(True)
+
+        table = QFrame()
+        table.setObjectName("TableContainer")
+        t_layout = QVBoxLayout(table)
+        t_layout.setContentsMargins(16, 12, 16, 12)
+        t_layout.setSpacing(6)
+
+        for idx, tr in enumerate(self.liked_tracks):
+            row = self._build_song_row(
+                tr,
+                self.liked_tracks,
+                idx,
+                self.library_play_buttons,
+                self.library_duration_labels,
+                self.library_heart_buttons,
+            )
+            t_layout.addWidget(row)
+
+        self.liked_songs_container.addWidget(table)
+        playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        self._refresh_play_buttons(playing)
+
+    def _refresh_library_recently_played(self):
+        self._clear_layout(self.rp_container_layout)
+
+        if not self.recently_played:
+            empty_lbl = QLabel("No recently played songs yet. Play a track to see it here.")
+            empty_lbl.setStyleSheet("color: #777; font-size: 11px; padding: 4px 0;")
+            self.rp_container_layout.addWidget(empty_lbl)
+            return
+
+        grid = QGridLayout()
+        grid.setSpacing(15)
+        for idx, tr in enumerate(self.recently_played):
+            card = ClickableFrame()
             card.setObjectName("RecentCard")
-            card.setFixedSize(200, 60)
+            card.setFixedHeight(64)
+            card.setCursor(Qt.PointingHandCursor)
+            card.clicked.connect(lambda item=tr, pl=self.recently_played, i=idx: self.play_track(item, pl, i))
+
             c_layout = QHBoxLayout(card)
-            c_layout.setContentsMargins(5, 5, 10, 5)
+            c_layout.setContentsMargins(8, 7, 12, 7)
             c_layout.setSpacing(10)
 
             art = QLabel()
             art.setFixedSize(50, 50)
-            art.setStyleSheet(f"background-color: {color}; border-radius: 4px;")
+            art.setStyleSheet("background-color: #222; border-radius: 4px;")
+            img_url = tr.get("album_image") or tr.get("image")
+            pixmap = self._pixmap_from_url(img_url, 50, 50)
+            if pixmap:
+                art.setPixmap(pixmap)
 
             info = QVBoxLayout()
             info.setSpacing(2)
             info.setAlignment(Qt.AlignVCenter)
-            t = QLabel(title)
+            full_name = tr.get("name", "Unknown Track")
+            display_name = full_name if len(full_name) <= 22 else full_name[:20] + "..."
+            t = QLabel(display_name)
+            t.setToolTip(full_name)
             t.setStyleSheet("color: white; font-size: 11px; font-weight: bold;")
-            s = QLabel(sub)
+
+            artist_name = tr.get("artist_name", "Unknown Artist")
+            dur_ms = max(0, int(tr.get("duration") or 0) * 1000)
+            s = QLabel(f"{artist_name} · {self._format_time(dur_ms)}")
             s.setStyleSheet("color: #888; font-size: 10px;")
             info.addWidget(t)
             info.addWidget(s)
 
             c_layout.addWidget(art)
             c_layout.addLayout(info, 1)
-            rp_layout.addWidget(card)
-        rp_layout.addStretch()
-        layout.addLayout(rp_layout)
+            grid.addWidget(card, idx // 4, idx % 4)
 
-        yp_header = QHBoxLayout()
-        yp_title = QLabel("Your Playlists")
-        yp_title.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
-        yp_count = QLabel("4 playlists")
-        yp_count.setStyleSheet("color: #888; font-size: 10px;")
-        yp_header.addWidget(yp_title)
-        yp_header.addStretch()
-        yp_header.addWidget(yp_count)
-        layout.addLayout(yp_header)
-
-        table_container = QFrame()
-        table_container.setObjectName("TableContainer")
-        table_layout = QVBoxLayout(table_container)
-        table_layout.setContentsMargins(15, 10, 15, 10)
-        table_layout.setSpacing(0)
-
-        th = QHBoxLayout()
-        for text, stretch in [("TITLE", 1), ("SONGS", 0), ("DATE CREATED", 0), ("", 0)]:
-            lbl = QLabel(text)
-            lbl.setStyleSheet("color: #666; font-size: 9px; font-weight: bold;")
-            if stretch:
-                th.addWidget(lbl, 1)
-            else:
-                lbl.setFixedWidth(100 if text else 40)
-                th.addWidget(lbl)
-        table_layout.addLayout(th)
-        table_layout.addSpacing(10)
-
-        playlists = [("Deep Focus Architecture", "42", "Nov 12, 2026"), ("Late Night Felt Piano", "28", "Oct 24, 2026"), ("Rainy Studio Sessions", "19", "Sep 08, 2026")]
-        for title, songs, date in playlists:
-            row = QFrame()
-            row.setObjectName("PlaylistRow")
-            r_layout = QHBoxLayout(row)
-            r_layout.setContentsMargins(0, 10, 0, 10)
-
-            t_lbl = QLabel(title)
-            t_lbl.setStyleSheet("color: white; font-size: 12px;")
-            s_lbl = QLabel(songs)
-            s_lbl.setFixedWidth(100)
-            s_lbl.setStyleSheet("color: #888; font-size: 11px;")
-            d_lbl = QLabel(date)
-            d_lbl.setFixedWidth(100)
-            d_lbl.setStyleSheet("color: #888; font-size: 11px;")
-
-            p_btn = QPushButton("▶")
-            p_btn.setFixedSize(24, 24)
-            p_btn.setStyleSheet("background-color: #222; color: white; border: none; border-radius: 12px; font-size: 9px;")
-
-            r_layout.addWidget(t_lbl, 1)
-            r_layout.addWidget(s_lbl)
-            r_layout.addWidget(d_lbl)
-            r_layout.addWidget(p_btn)
-            table_layout.addWidget(row)
-
-        layout.addWidget(table_container)
-
-        fa_title = QLabel("Followed Artists")
-        fa_title.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
-        layout.addWidget(fa_title)
-
-        fa_layout = QHBoxLayout()
-        fa_layout.setSpacing(15)
-        artists = [("Nils Frahm", "#333"), ("Ólafur Arnalds", "#222"), ("Hania Rani", "#444"), ("Jon Hopkins", "#111")]
-        for name, color in artists:
-            card = QFrame()
-            card.setObjectName("ArtistCard")
-            card.setFixedSize(140, 160)
-            c_layout = QVBoxLayout(card)
-            c_layout.setAlignment(Qt.AlignCenter)
-            c_layout.setContentsMargins(15, 15, 15, 15)
-            art = QLabel()
-            art.setFixedSize(100, 100)
-            art.setStyleSheet(f"background-color: {color}; border-radius: 50px;")
-            t = QLabel(name)
-            t.setStyleSheet("color: white; font-size: 11px; font-weight: bold; margin-top: 10px;")
-            c_layout.addWidget(art)
-            c_layout.addWidget(t, alignment=Qt.AlignCenter)
-            fa_layout.addWidget(card)
-        fa_layout.addStretch()
-        layout.addLayout(fa_layout)
-
-        layout.addStretch()
-        scroll.setWidget(content)
-        return scroll
+        for col in range(4):
+            grid.setColumnStretch(col, 1)
+        self.rp_container_layout.addLayout(grid)
 
     # ==========================================
     # PLAYER BAR
@@ -1139,9 +1339,19 @@ class MainWindow(QMainWindow):
 
         info.addWidget(self.player_title)
         info.addWidget(self.player_artist)
+
+        self.player_like_btn = QPushButton("♡")
+        self.player_like_btn.setFixedSize(28, 28)
+        self.player_like_btn.setCursor(Qt.PointingHandCursor)
+        self.player_like_btn.setEnabled(False)
+        self._apply_heart_style(self.player_like_btn, False)
+        self.player_like_btn.clicked.connect(lambda: self.toggle_like_track(self.current_track))
+
         left.addWidget(self.player_art)
         left.addSpacing(10)
         left.addLayout(info)
+        left.addSpacing(8)
+        left.addWidget(self.player_like_btn)
         left.addStretch()
 
         center = QVBoxLayout()
