@@ -6,7 +6,7 @@ import secrets
 import binascii
 import sys
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout,
+    QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
     QLabel, QLineEdit, QPushButton, QFrame, QMessageBox, QApplication
 )
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -110,6 +110,17 @@ font-weight: bold;
 QLabel#ErrorLabel { 
 color: #ff4444; font-size: 11px; 
 }
+
+QPushButton#LinkBtn {
+    background: transparent;
+    border: none;
+    color: #888888;
+    font-size: 12px;
+    text-decoration: underline;
+}
+QPushButton#LinkBtn:hover {
+    color: white;
+}
 """
 
 # ==========================================
@@ -151,6 +162,27 @@ def verify_password(stored_password, provided_password):
     except ValueError:
         return False
 
+def create_user(username, password):
+    """Attempts to create a new user. Returns True if successful, False if username exists."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Check if user exists
+    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    if cursor.fetchone():
+        conn.close()
+        return False # Username taken
+    
+    # Hash the new password
+    salt = secrets.token_hex(16)
+    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), bytes.fromhex(salt), 100000)
+    stored_value = f"{salt}${binascii.hexlify(pwd_hash).decode('utf-8')}"
+    
+    cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, stored_value))
+    conn.commit()
+    conn.close()
+    return True
+
 # Initialize DB on startup
 setup_database()
 
@@ -158,7 +190,7 @@ setup_database()
 # GUI CLASS
 # ==========================================
 class LoginWindow(QWidget):
-    # Signal now passes the username string
+    # Signal passes the username string
     login_successful = Signal(str)
 
     def __init__(self):
@@ -181,11 +213,20 @@ class LoginWindow(QWidget):
         left_layout.setContentsMargins(40, 60, 40, 60)
         left_layout.setAlignment(Qt.AlignTop)
 
+        # --- STACKED WIDGET FOR LOGIN / SIGNUP ---
+        self.form_stack = QStackedWidget()
+        
+        # 1. LOGIN FORM
+        self.login_widget = QWidget()
+        login_layout = QVBoxLayout(self.login_widget)
+        login_layout.setContentsMargins(0, 0, 0, 0)
+        login_layout.setSpacing(0)
+
         title = QLabel("LOGIN")
         title.setObjectName("TitleLabel")
         title.setAlignment(Qt.AlignCenter)
 
-        subtitle = QLabel("How to get started lorem ipsum dolor at?")
+        subtitle = QLabel("Welcome back! Please enter your details.")
         subtitle.setObjectName("SubtitleLabel")
         subtitle.setAlignment(Qt.AlignCenter)
 
@@ -196,7 +237,6 @@ class LoginWindow(QWidget):
         self.pass_input.setPlaceholderText("🔒  Password")
         self.pass_input.setEchoMode(QLineEdit.Password)
         
-        # Allow pressing Enter to login
         self.pass_input.returnPressed.connect(self.handle_login)
 
         self.error_label = QLabel("")
@@ -207,6 +247,18 @@ class LoginWindow(QWidget):
         self.login_btn.setObjectName("MainLoginBtn")
         self.login_btn.setCursor(Qt.PointingHandCursor)
         self.login_btn.clicked.connect(self.handle_login)
+
+        # Switch to Sign Up
+        switch_layout = QHBoxLayout()
+        switch_layout.setAlignment(Qt.AlignCenter)
+        switch_lbl = QLabel("Don't have an account?")
+        switch_lbl.setStyleSheet("color: #888; font-size: 11px;")
+        switch_btn = QPushButton("Sign Up")
+        switch_btn.setObjectName("LinkBtn")
+        switch_btn.setCursor(Qt.PointingHandCursor)
+        switch_btn.clicked.connect(lambda: self.form_stack.setCurrentIndex(1))
+        switch_layout.addWidget(switch_lbl)
+        switch_layout.addWidget(switch_btn)
 
         divider_layout = QHBoxLayout()
         line_left = QFrame()
@@ -222,7 +274,6 @@ class LoginWindow(QWidget):
         divider_layout.addWidget(divider_lbl)
         divider_layout.addWidget(line_right)
 
-        # OAuth Google Button
         self.google_btn = QPushButton("G   Login with Google")
         self.google_btn.setObjectName("SocialBtn")
         self.google_btn.setCursor(Qt.PointingHandCursor)
@@ -231,21 +282,90 @@ class LoginWindow(QWidget):
         self.facebook_btn = QPushButton("f   Login with Facebook")
         self.facebook_btn.setObjectName("SocialBtn")
 
-        left_layout.addWidget(title)
-        left_layout.addWidget(subtitle)
-        left_layout.addSpacing(10)
-        left_layout.addWidget(self.user_input)
-        left_layout.addSpacing(10)
-        left_layout.addWidget(self.pass_input)
-        left_layout.addWidget(self.error_label)
-        left_layout.addSpacing(15)
-        left_layout.addWidget(self.login_btn)
-        left_layout.addSpacing(20)
-        left_layout.addLayout(divider_layout)
-        left_layout.addSpacing(15)
-        left_layout.addWidget(self.google_btn)
-        left_layout.addSpacing(10)
-        left_layout.addWidget(self.facebook_btn)
+        login_layout.addWidget(title)
+        login_layout.addWidget(subtitle)
+        login_layout.addSpacing(10)
+        login_layout.addWidget(self.user_input)
+        login_layout.addSpacing(10)
+        login_layout.addWidget(self.pass_input)
+        login_layout.addWidget(self.error_label)
+        login_layout.addSpacing(15)
+        login_layout.addWidget(self.login_btn)
+        login_layout.addSpacing(10)
+        login_layout.addLayout(switch_layout)
+        login_layout.addSpacing(20)
+        login_layout.addLayout(divider_layout)
+        login_layout.addSpacing(15)
+        login_layout.addWidget(self.google_btn)
+        login_layout.addSpacing(10)
+        login_layout.addWidget(self.facebook_btn)
+
+        # 2. SIGN UP FORM
+        self.signup_widget = QWidget()
+        signup_layout = QVBoxLayout(self.signup_widget)
+        signup_layout.setContentsMargins(0, 0, 0, 0)
+        signup_layout.setSpacing(0)
+
+        su_title = QLabel("SIGN UP")
+        su_title.setObjectName("TitleLabel")
+        su_title.setAlignment(Qt.AlignCenter)
+
+        su_subtitle = QLabel("Create a new account to get started.")
+        su_subtitle.setObjectName("SubtitleLabel")
+        su_subtitle.setAlignment(Qt.AlignCenter)
+
+        self.su_user_input = QLineEdit()
+        self.su_user_input.setPlaceholderText("👤  Choose a Username")
+
+        self.su_pass_input = QLineEdit()
+        self.su_pass_input.setPlaceholderText("🔒  Create Password")
+        self.su_pass_input.setEchoMode(QLineEdit.Password)
+
+        self.su_confirm_input = QLineEdit()
+        self.su_confirm_input.setPlaceholderText("🔒  Confirm Password")
+        self.su_confirm_input.setEchoMode(QLineEdit.Password)
+        self.su_confirm_input.returnPressed.connect(self.handle_signup)
+
+        self.su_error_label = QLabel("")
+        self.su_error_label.setObjectName("ErrorLabel")
+        self.su_error_label.setAlignment(Qt.AlignCenter)
+
+        self.signup_btn = QPushButton("Create Account")
+        self.signup_btn.setObjectName("MainLoginBtn")
+        self.signup_btn.setCursor(Qt.PointingHandCursor)
+        self.signup_btn.clicked.connect(self.handle_signup)
+
+        # Switch back to Login
+        switch_back_layout = QHBoxLayout()
+        switch_back_layout.setAlignment(Qt.AlignCenter)
+        switch_back_lbl = QLabel("Already have an account?")
+        switch_back_lbl.setStyleSheet("color: #888; font-size: 11px;")
+        switch_back_btn = QPushButton("Login")
+        switch_back_btn.setObjectName("LinkBtn")
+        switch_back_btn.setCursor(Qt.PointingHandCursor)
+        switch_back_btn.clicked.connect(lambda: self.form_stack.setCurrentIndex(0))
+        switch_back_layout.addWidget(switch_back_lbl)
+        switch_back_layout.addWidget(switch_back_btn)
+
+        signup_layout.addWidget(su_title)
+        signup_layout.addWidget(su_subtitle)
+        signup_layout.addSpacing(10)
+        signup_layout.addWidget(self.su_user_input)
+        signup_layout.addSpacing(10)
+        signup_layout.addWidget(self.su_pass_input)
+        signup_layout.addSpacing(10)
+        signup_layout.addWidget(self.su_confirm_input)
+        signup_layout.addWidget(self.su_error_label)
+        signup_layout.addSpacing(15)
+        signup_layout.addWidget(self.signup_btn)
+        signup_layout.addSpacing(15)
+        signup_layout.addLayout(switch_back_layout)
+        signup_layout.addStretch()
+
+        self.form_stack.addWidget(self.login_widget)
+        self.form_stack.addWidget(self.signup_widget)
+        
+        left_layout.addWidget(self.form_stack)
 
         # ==========================================
         # RIGHT PANEL (The Image)
@@ -296,30 +416,64 @@ class LoginWindow(QWidget):
         self.login_btn.setText("Logging in...")
         self.login_btn.setEnabled(False)
 
-        # Small delay for UI feedback
         QTimer.singleShot(500, lambda: self.verify_credentials(username, password))
 
     def verify_credentials(self, username, password):
-        """Checks the SQLite database for the user and verifies the hash."""
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("SELECT password_hash FROM users WHERE username = ?", (username,))
         result = cursor.fetchone()
         conn.close()
 
-        # Check if user exists and password hash matches
         if result and verify_password(result[0], password):
-            self.login_successful.emit(username) # Emit the username
+            self.login_successful.emit(username)
         else:
             self.error_label.setText("Invalid username or password.")
             self.login_btn.setText("Login Now")
             self.login_btn.setEnabled(True)
 
     # ==========================================
+    # SIGN UP LOGIC
+    # ==========================================
+    def handle_signup(self):
+        username = self.su_user_input.text().strip()
+        password = self.su_pass_input.text().strip()
+        confirm = self.su_confirm_input.text().strip()
+
+        self.su_error_label.setText("")
+
+        if not username or not password or not confirm:
+            self.su_error_label.setText("Please fill in all fields.")
+            return
+        
+        if len(password) < 4:
+            self.su_error_label.setText("Password must be at least 4 characters.")
+            return
+
+        if password != confirm:
+            self.su_error_label.setText("Passwords do not match.")
+            return
+
+        self.signup_btn.setText("Creating...")
+        self.signup_btn.setEnabled(False)
+
+        QTimer.singleShot(500, lambda: self.execute_signup(username, password))
+
+    def execute_signup(self, username, password):
+        success = create_user(username, password)
+        
+        if success:
+            QMessageBox.information(self, "Success", f"Account '{username}' created successfully!\nLogging you in...")
+            self.login_successful.emit(username)
+        else:
+            self.su_error_label.setText("Username is already taken. Please choose another.")
+            self.signup_btn.setText("Create Account")
+            self.signup_btn.setEnabled(True)
+
+    # ==========================================
     # REAL OAUTH 2.0 SIMULATION
     # ==========================================
     def handle_google_oauth(self):
-        """Simulates the real Google OAuth 2.0 flow."""
         self.error_label.setText("")
         self.google_btn.setText("Waiting for browser...")
         self.google_btn.setEnabled(False)
@@ -328,10 +482,8 @@ class LoginWindow(QWidget):
         QTimer.singleShot(2000, self.finish_google_oauth)
 
     def finish_google_oauth(self):
-        """Runs after the simulated browser login is done."""
         self.google_btn.setText("Success!")
         QMessageBox.information(self, "OAuth Success", "Logged in with Google successfully!")
-        # For OAuth, we pass a generic name or a name from the OAuth provider
         self.login_successful.emit("GoogleUser")
 
 
@@ -344,7 +496,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     
     login_window = LoginWindow()
-    dashboard_window = None # Keep reference to prevent garbage collection
+    dashboard_window = None
 
     def on_login_success(username):
         global dashboard_window
