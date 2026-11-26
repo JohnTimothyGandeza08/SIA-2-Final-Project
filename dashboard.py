@@ -881,37 +881,6 @@ class MainWindow(QMainWindow):
         self.search_results_layout.setSpacing(16)
         layout.addLayout(self.search_results_layout)
 
-        # Explorations
-        explore_lbl = QLabel("EXPLORATIONS")
-        explore_lbl.setObjectName("SectionTitle")
-        layout.addWidget(explore_lbl)
-
-        grid_layout = QGridLayout()
-        grid_layout.setSpacing(15)
-        explorations = [
-            ("Ambient", "Deep focus"),
-            ("Classical", "Piano & strings"),
-            ("Lo-Fi", "Quiet beats"),
-            ("Electronic", "Synth & pulse"),
-        ]
-        for i, (title, sub) in enumerate(explorations):
-            card = ClickableFrame()
-            card.setObjectName("TableContainer")
-            card.setFixedHeight(90)
-            card.setCursor(Qt.PointingHandCursor)
-            card.clicked.connect(lambda q=title: self._quick_search(q))
-            c_layout = QVBoxLayout(card)
-            c_layout.setContentsMargins(15, 15, 15, 15)
-            c_title = QLabel(title)
-            c_title.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
-            c_sub = QLabel(sub)
-            c_sub.setStyleSheet("color: #888; font-size: 10px;")
-            c_layout.addWidget(c_title)
-            c_layout.addStretch()
-            c_layout.addWidget(c_sub)
-            grid_layout.addWidget(card, i // 4, i % 4)
-
-        layout.addLayout(grid_layout)
         layout.addStretch()
         scroll.setWidget(content)
         return scroll
