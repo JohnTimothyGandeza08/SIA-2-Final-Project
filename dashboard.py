@@ -702,7 +702,8 @@ class MainWindow(QMainWindow):
         self.stacked_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         outer_layout.addWidget(self.stacked_widget, 1)
         
-        outer_layout.addWidget(self.create_player_bar())
+        self.player_bar = self.create_player_bar()
+        outer_layout.addWidget(self.player_bar)
 
         # Update username after all UI elements are built
         self.set_username(self.username)
@@ -758,12 +759,15 @@ class MainWindow(QMainWindow):
             
         if mode_index == 0:
             self.navbar.show()
+            self.player_bar.show()
             self.stacked_widget.setCurrentIndex(self.current_music_page)
         elif mode_index == 1:
             self.navbar.hide()
+            self.player_bar.hide()
             self.stacked_widget.setCurrentIndex(3)
         elif mode_index == 2:
             self.navbar.hide()
+            self.player_bar.hide()
             self.stacked_widget.setCurrentIndex(4)
 
     # ==========================================
