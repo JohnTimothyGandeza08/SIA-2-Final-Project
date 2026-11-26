@@ -335,6 +335,8 @@ class LoginWindow(QWidget):
         result = cursor.fetchone()
         conn.close()
         if result and verify_password(result[0], password):
+            # Debug print to confirm we are emitting the right name
+            print(f"[LOGIN] Successfully verified user: '{username}'. Emitting signal...")
             self.login_successful.emit(username)
         else:
             self.error_label.setText("Invalid username or password.")
@@ -363,6 +365,7 @@ class LoginWindow(QWidget):
         success = create_user(username, password)
         if success:
             QMessageBox.information(self, "Success", f"Account '{username}' created successfully!\nLogging you in...")
+            print(f"[SIGNUP] Successfully created user: '{username}'. Emitting signal...")
             self.login_successful.emit(username)
         else:
             self.su_error_label.setText("Username is already taken. Please choose another.")
@@ -383,6 +386,7 @@ class LoginWindow(QWidget):
 
 
 if __name__ == "__main__":
+    # IMPORTANT: Ensure the dashboard module is imported correctly
     from dashboard import MainWindow
     
     app = QApplication(sys.argv)
@@ -391,12 +395,23 @@ if __name__ == "__main__":
 
     def on_login_success(username):
         global dashboard_window
-        print(f"Login successful for: {username}")
-        # Pass the username explicitly
+        
+        # Safety check to ensure username isn't empty or None
+        if not username:
+            username = "UnknownUser"
+            
+        print(f"[MAIN] Login successful. Received username: '{username}'")
+        print(f"[MAIN] Instantiating MainWindow with username='{username}'")
+        
+        # Pass the username explicitly to the MainWindow constructor
         dashboard_window = MainWindow(username=username)
         dashboard_window.show()
+        
+        # Close login window
         login_window.close()
 
+    # Connect the signal from LoginWindow to the handler function
     login_window.login_successful.connect(on_login_success)
     login_window.show()
+    
     sys.exit(app.exec())
