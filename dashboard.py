@@ -122,10 +122,15 @@ class MainWindow(QMainWindow):
             btn.style().polish(btn)
 
     def play_jamendo_track(self, audio_url, track_name, artist_name):
+        if not audio_url or not audio_url.startswith("http"):
+            print(f"[PLAYER ERROR] Invalid audio URL: {audio_url}")
+            return
+            
+        print(f"Playing: {track_name} from {audio_url}")
         self.media_player.setSource(QUrl(audio_url))
         self.media_player.play()
         
-        # Update player bar
+        # Update player bar UI
         self.player_title.setText(track_name)
         self.player_artist.setText(artist_name)
 
