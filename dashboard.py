@@ -41,7 +41,6 @@ class MainWindow(QMainWindow):
         logo_box.addWidget(logo_text)
         
         # Center: Segmented Control 
-        # Using fixed sizes per button so it NEVER squishes or relies on font metrics
         seg_widget = QWidget()
         seg_widget.setObjectName("SegmentedControl")
         seg_widget.setFixedSize(240, 34) 
@@ -54,7 +53,7 @@ class MainWindow(QMainWindow):
             btn = QPushButton(text)
             btn.setObjectName("SegBtnActive" if i == 0 else "SegBtn")
             btn.setCursor(Qt.PointingHandCursor)
-            btn.setFixedWidth(77) # Perfectly divides the 240px width
+            btn.setFixedWidth(77) 
             seg_layout.addWidget(btn)
 
         # Right: Search + Profile
@@ -83,22 +82,41 @@ class MainWindow(QMainWindow):
         nav_layout.setContentsMargins(30, 0, 30, 0)
         nav_layout.setSpacing(15)
         
-        for text, active in [("🏠  Home", True), ("🔍  Search", False), ("📚  Your Library", False)]:
+        self.nav_buttons = []
+        # Store the buttons so we can change their active state later
+        nav_items = [("🏠  Home", 0), ("🔍  Search", 1), ("📚  Your Library", 2)]
+        
+        for text, index in nav_items:
             btn = QPushButton(text)
-            btn.setObjectName("NavTopBtnActive" if active else "NavTopBtn")
+            btn.setObjectName("NavTopBtnActive" if index == 0 else "NavTopBtn")
             btn.setCursor(Qt.PointingHandCursor)
+            # Connect button click to switch pages
+            btn.clicked.connect(lambda checked, i=index: self.set_page(i))
             nav_layout.addWidget(btn)
+            self.nav_buttons.append(btn)
+            
         nav_layout.addStretch()
 
         # --- 3. STACKED WIDGET ---
         self.stacked_widget = QStackedWidget()
-        self.stacked_widget.addWidget(self.build_home_page())
+        self.stacked_widget.addWidget(self.build_home_page())      # Index 0
+        self.stacked_widget.addWidget(self.build_search_page())    # Index 1
+        self.stacked_widget.addWidget(self.build_library_page())   # Index 2
 
         # --- 4. ASSEMBLE ---
         outer_layout.addWidget(header)
         outer_layout.addWidget(navbar)
         outer_layout.addWidget(self.stacked_widget, 1)
         outer_layout.addWidget(self.create_player_bar())
+
+    # --- PAGE SWITCHING LOGIC ---
+    def set_page(self, index):
+        self.stacked_widget.setCurrentIndex(index)
+        # Update button styles (Active vs Inactive)
+        for i, btn in enumerate(self.nav_buttons):
+            btn.setObjectName("NavTopBtnActive" if i == index else "NavTopBtn")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
 
     def _create_play_icon(self, size=40, color="#ffffff", bg_color="#0055ff"):
         pixmap = QPixmap(size, size)
@@ -117,6 +135,9 @@ class MainWindow(QMainWindow):
         lbl.setFixedSize(size, size)
         return lbl
 
+    # ==========================================
+    # PAGE 1: HOME
+    # ==========================================
     def build_home_page(self):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -188,7 +209,7 @@ class MainWindow(QMainWindow):
         ]
         for title, sub in recents:
             card = QFrame()
-            card.setFixedSize(150, 195) # Locked size
+            card.setFixedSize(150, 195) 
             card.setStyleSheet("background-color: #181818; border-radius: 6px; border: 1px solid #222;") 
             
             c_layout = QVBoxLayout(card)
@@ -227,7 +248,7 @@ class MainWindow(QMainWindow):
         for title, sub in mixes:
             card = QFrame()
             card.setObjectName("MixCard")
-            card.setFixedHeight(130) # LOCKED HEIGHT SO IT CANNOT COLLAPSE
+            card.setFixedHeight(130) 
             c_layout = QHBoxLayout(card)
             c_layout.setContentsMargins(15, 15, 15, 15)
 
@@ -255,6 +276,40 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         scroll.setWidget(content)
         return scroll
+
+    # ==========================================
+    # PAGE 2: SEARCH (Placeholder)
+    # ==========================================
+    def build_search_page(self):
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(30, 20, 30, 20)
+        
+        # Reuse the main search bar style
+        big_search = QLineEdit()
+        big_search.setObjectName("SearchBar")
+        big_search.setPlaceholderText("🔍 Search for songs, artists, or albums...")
+        big_search.setFixedHeight(45)
+        big_search.setStyleSheet("font-size: 16px; padding-left: 20px; border-radius: 8px; background-color: #1a1a1a;")
+        
+        layout.addWidget(big_search)
+        layout.addStretch()
+        return content
+
+    # ==========================================
+    # PAGE 3: LIBRARY (Placeholder)
+    # ==========================================
+    def build_library_page(self):
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(30, 20, 30, 20)
+        
+        title = QLabel("Your Library")
+        title.setStyleSheet("color: white; font-size: 28px; font-weight: bold;")
+        
+        layout.addWidget(title)
+        layout.addStretch()
+        return content
 
     def create_player_bar(self):
         player_bar = QWidget()
