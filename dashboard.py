@@ -2328,13 +2328,7 @@ class MainWindow(QMainWindow):
             return
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.media_player.stop()
-        if self.receivers(self.logout_requested) == 0:
-            from login import LoginWindow
-            self._login_window = LoginWindow()
-            self._login_window.prepare_for_login()
-            self._login_window.show()
-        else:
-            self.logout_requested.emit()
+        self.logout_requested.emit()
         self.close()
 
     def _on_header_search(self):
