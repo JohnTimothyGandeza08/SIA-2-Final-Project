@@ -13,8 +13,9 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from theme import DARK_THEME
 import jamendo_api
-from games_page import GamesPage
 
+# Import your Game Hub from main_window.py
+from ui.main_window import MainWindow as GameHubWindow
 
 class ClickableFrame(QFrame):
     clicked = Signal()
@@ -110,7 +111,6 @@ class MainWindow(QMainWindow):
         main_widget.setObjectName("MainContainer")
         self.setCentralWidget(main_widget)
         
-        # Use a QVBoxLayout for the main window
         outer_layout = QVBoxLayout(main_widget)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
@@ -188,21 +188,18 @@ class MainWindow(QMainWindow):
 
         # STACKED WIDGET
         self.stacked_widget = QStackedWidget()
-        self.games_page = GamesPage(username=self.username)
         
         self.stacked_widget.addWidget(self.build_home_page())      # Index 0
         self.stacked_widget.addWidget(self.build_search_page())    # Index 1
         self.stacked_widget.addWidget(self.build_library_page())   # Index 2
         self.stacked_widget.addWidget(self.build_video_page())     # Index 3
-        self.stacked_widget.addWidget(self.games_page)             # Index 4
+        self.stacked_widget.addWidget(self.build_games_page())     # Index 4 (Custom Integration)
 
         # --- ASSEMBLE LAYOUT ---
         outer_layout.addWidget(header)
         outer_layout.addWidget(self.navbar)
         
-        # CRITICAL FIX: Give the stacked widget a stretch factor of 1
-        # so it takes up available space but DOES NOT push the bottom bar out.
-        # Also set size policy to Expanding/Ignored to prevent it from growing indefinitely.
+        # Stretch factor 1 ensures the content expands but doesn't push the player bar off
         self.stacked_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         outer_layout.addWidget(self.stacked_widget, 1)
         
@@ -210,6 +207,40 @@ class MainWindow(QMainWindow):
 
         # Update username after all UI elements are built
         self.set_username(self.username)
+
+    def build_games_page(self):
+        """Integrates the standalone Game Hub while preventing window resizing."""
+        wrapper = QWidget()
+        layout = QVBoxLayout(wrapper)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("background: transparent; border: none;")
+        
+        # Instantiate the Game Hub
+        self.game_hub = GameHubWindow()
+        self.game_hub.setWindowFlags(Qt.Widget) 
+        
+        # Force the Game Hub to ignore its minimum size so it fits in the scroll area
+        self.game_hub.setMinimumSize(0, 0)
+        self.game_hub.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        
+        # Add a back button visually inside the Game Hub layout
+        back_btn = QPushButton("← Back to Music Dashboard")
+        back_btn.setCursor(Qt.PointingHandCursor)
+        back_btn.setStyleSheet(
+            "background-color: #313244; color: #cdd6f4; border: 2px solid #45475a; "
+            "border-radius: 8px; padding: 10px 20px; font-weight: bold; font-size: 14px;"
+        )
+        back_btn.clicked.connect(lambda: self._set_top_mode(0))
+        
+        # Insert the back button into the menu layout at index 0
+        self.game_hub.menu_widget.layout().insertWidget(0, back_btn, alignment=Qt.AlignLeft)
+
+        scroll.setWidget(self.game_hub)
+        layout.addWidget(scroll)
+        return wrapper
 
     def set_username(self, username):
         self.username = username
@@ -219,15 +250,13 @@ class MainWindow(QMainWindow):
             self.home_welcome_label.setText(f"Welcome back, {self.username}!")
         if hasattr(self, 'video_welcome_label'):
             self.video_welcome_label.setText(f"Welcome, {self.username}!")
-        if hasattr(self, 'games_page') and hasattr(self.games_page, 'welcome_lbl'):
-            self.games_page.welcome_lbl.setText(f"Welcome, {self.username}!")
 
     def _set_top_mode(self, mode_index):
         for i, btn in enumerate(self.mode_buttons):
             btn.setObjectName("SegBtnActive" if i == mode_index else "SegBtn")
             btn.style().unpolish(btn)
             btn.style().polish(btn)
-        if mode_index != 2: self.games_page.pause_all()
+            
         if mode_index == 0:
             self.navbar.show()
             self.stacked_widget.setCurrentIndex(self.current_music_page)
@@ -431,8 +460,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(sub, alignment=Qt.AlignCenter)
         return page
 
-    # ... [Keep the rest of your methods exactly as they were] ...
-    
+    # ==========================================
+    # VECTOR PLAYER ICONS & UTILS
+    # ==========================================
     def _new_icon_canvas(self, size):
         pixmap = QPixmap(size * 2, size * 2)
         pixmap.setDevicePixelRatio(2.0)
@@ -686,6 +716,9 @@ class MainWindow(QMainWindow):
             if widget is not None: widget.deleteLater()
             elif child_layout is not None: self._clear_layout(child_layout)
 
+    # ==========================================
+    # PAGE 2: SEARCH
+    # ==========================================
     def build_search_page(self):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1026,6 +1059,9 @@ class MainWindow(QMainWindow):
         r_layout.addWidget(heart_btn)
         return row
 
+    # ==========================================
+    # PAGE 3: LIBRARY
+    # ==========================================
     def build_library_page(self):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1194,6 +1230,9 @@ class MainWindow(QMainWindow):
         for col in range(4): grid.setColumnStretch(col, 1)
         self.rp_container_layout.addLayout(grid)
 
+    # ==========================================
+    # PLAYER BAR
+    # ==========================================
     def create_player_bar(self):
         player_bar = QWidget()
         player_bar.setObjectName("PlayerBar")
