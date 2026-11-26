@@ -41,7 +41,7 @@ class SearchWorker(QThread):
             track_limit=20,
         )
 
-        # Pre-fetch raw image bytes off the GUI thread (QPixmap conversion stays on main thread)
+        # Pre-fetch raw image bytes off the GUI thread
         urls = set()
         for artist in results.get("artists", []):
             if artist.get("image"):
@@ -70,7 +70,9 @@ class SearchWorker(QThread):
 class MainWindow(QMainWindow):
     def __init__(self, username="User"):
         super().__init__()
-        self.username = username  # Store the username
+        # Ensure username is a valid string
+        self.username = str(username) if username else "User"
+        
         self.setWindowTitle("Pulse")
         self.resize(1100, 800)
         self.setStyleSheet(DARK_THEME)
@@ -176,17 +178,17 @@ class MainWindow(QMainWindow):
 
         # Profile icon with user's initial
         initial = self.username[0].upper() if self.username else "U"
-        profile = QLabel(initial)
-        profile.setFixedSize(30, 30)
-        profile.setAlignment(Qt.AlignCenter)
-        profile.setStyleSheet("background: white; color: black; border-radius: 15px; font-weight: bold; font-size: 12px;")
+        self.profile_label = QLabel(initial)
+        self.profile_label.setFixedSize(30, 30)
+        self.profile_label.setAlignment(Qt.AlignCenter)
+        self.profile_label.setStyleSheet("background: white; color: black; border-radius: 15px; font-weight: bold; font-size: 12px;")
 
         h_layout.addLayout(logo_box)
         h_layout.addStretch()
         h_layout.addWidget(seg_widget)
         h_layout.addStretch()
         h_layout.addWidget(self.header_search)
-        h_layout.addWidget(profile)
+        h_layout.addWidget(self.profile_label)
 
         # --- 2. NAVBAR ---
         self.navbar = QWidget()
@@ -213,17 +215,52 @@ class MainWindow(QMainWindow):
         # --- 3. STACKED WIDGET ---
         self.stacked_widget = QStackedWidget()
         self.games_page = GamesPage(username=self.username)
-        self.stacked_widget.addWidget(self.build_home_page())      # Index 0
-        self.stacked_widget.addWidget(self.build_search_page())    # Index 1
-        self.stacked_widget.addWidget(self.build_library_page())   # Index 2
-        self.stacked_widget.addWidget(self.build_video_page())     # Index 3
-        self.stacked_widget.addWidget(self.games_page)             # Index 4
+        
+        # Build pages
+        self.home_page = self.build_home_page()
+        self.search_page = self.build_search_page()
+        self.library_page = self.build_library_page()
+        self.video_page = self.build_video_page()
+        
+        self.stacked_widget.addWidget(self.home_page)      # Index 0
+        self.stacked_widget.addWidget(self.search_page)    # Index 1
+        self.stacked_widget.addWidget(self.library_page)   # Index 2
+        self.stacked_widget.addWidget(self.video_page)     # Index 3
+        self.stacked_widget.addWidget(self.games_page)     # Index 4
 
         # --- 4. ASSEMBLE ---
         outer_layout.addWidget(header)
         outer_layout.addWidget(self.navbar)
         outer_layout.addWidget(self.stacked_widget, 1)
         outer_layout.addWidget(self.create_player_bar())
+
+        # Force update of welcome labels after everything is built
+        self.update_welcome_labels()
+
+    def update_welcome_labels(self):
+        """Updates all welcome labels dynamically to ensure correct username is shown."""
+        try:
+            # Update Home Page
+            if hasattr(self, 'home_welcome_label'):
+                self.home_welcome_label.setText(f"Welcome back, {self.username}!")
+            
+            # Update Video Page
+            if hasattr(self, 'video_welcome_label'):
+                self.video_welcome_label.setText(f"Welcome, {self.username}!")
+            
+            # Update Games Page
+            if hasattr(self.games_page, 'username'):
+                self.games_page.username = self.username
+                if hasattr(self.games_page, 'welcome_lbl'):
+                    self.games_page.welcome_lbl.setText(f"Welcome, {self.username}!")
+            
+            # Update Profile Circle Initial
+            initial = self.username[0].upper() if self.username else "U"
+            if hasattr(self, 'profile_label'):
+                self.profile_label.setText(initial)
+                
+        except Exception as e:
+            print(f"Error updating welcome labels: {e}")
 
     def _set_top_mode(self, mode_index):
         for i, btn in enumerate(self.mode_buttons):
@@ -249,16 +286,16 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setAlignment(Qt.AlignCenter)
         
-        # Welcome Message for Video
-        welcome_lbl = QLabel(f"Welcome, {self.username}!")
-        welcome_lbl.setStyleSheet("color: #0055ff; font-size: 18px; font-weight: bold; margin-bottom: 10px;")
+        # Store reference for dynamic update
+        self.video_welcome_label = QLabel(f"Welcome, {self.username}!")
+        self.video_welcome_label.setStyleSheet("color: #0055ff; font-size: 18px; font-weight: bold; margin-bottom: 10px;")
         
         title = QLabel("Video")
         title.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
         sub = QLabel("Video streaming is coming soon.")
         sub.setStyleSheet("color: #777; font-size: 12px;")
         
-        layout.addWidget(welcome_lbl, alignment=Qt.AlignCenter)
+        layout.addWidget(self.video_welcome_label, alignment=Qt.AlignCenter)
         layout.addWidget(title, alignment=Qt.AlignCenter)
         layout.addWidget(sub, alignment=Qt.AlignCenter)
         return page
@@ -340,7 +377,6 @@ class MainWindow(QMainWindow):
         p.setPen(pen)
         p.setBrush(Qt.NoBrush)
 
-        # Speaker body
         speaker = QPolygonF([
             QPointF(2.0, 6.0),
             QPointF(5.0, 6.0),
@@ -512,7 +548,6 @@ class MainWindow(QMainWindow):
             else:
                 self.player_art.clear()
 
-            # Sync song bar immediately with the track's known duration
             self._expected_duration_ms = max(0, int(duration_sec or 0) * 1000)
             self.progress_slider.blockSignals(True)
             self.progress_slider.setRange(0, self._expected_duration_ms)
@@ -643,9 +678,9 @@ class MainWindow(QMainWindow):
 
         # --- WELCOME MESSAGE ---
         welcome_header = QHBoxLayout()
-        welcome_lbl = QLabel(f"Welcome back, {self.username}!")
-        welcome_lbl.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
-        welcome_header.addWidget(welcome_lbl)
+        self.home_welcome_label = QLabel(f"Welcome back, {self.username}!")
+        self.home_welcome_label.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
+        welcome_header.addWidget(self.home_welcome_label)
         welcome_header.addStretch()
         layout.addLayout(welcome_header)
 
@@ -757,7 +792,6 @@ class MainWindow(QMainWindow):
                 c_layout = QHBoxLayout(card)
                 c_layout.setContentsMargins(12, 12, 12, 12)
 
-                # Album Art
                 art_label = QLabel()
                 art_label.setFixedSize(84, 84)
                 art_label.setStyleSheet("background-color: #333; border-radius: 6px;")
@@ -767,7 +801,6 @@ class MainWindow(QMainWindow):
                 if pixmap:
                     art_label.setPixmap(pixmap)
 
-                # Text Info
                 text_col = QVBoxLayout()
                 text_col.setSpacing(3)
 
@@ -798,7 +831,6 @@ class MainWindow(QMainWindow):
                 text_col.addWidget(s)
                 text_col.addStretch()
 
-                # Action buttons (Like + Play)
                 actions_col = QVBoxLayout()
                 actions_col.setSpacing(6)
                 actions_col.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -856,7 +888,6 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(30, 20, 30, 20)
         layout.setSpacing(16)
 
-        # Search input row
         search_wrapper = QHBoxLayout()
         search_wrapper.addStretch()
         self.big_search = QLineEdit()
@@ -888,7 +919,6 @@ class MainWindow(QMainWindow):
         search_wrapper.addWidget(search_go_btn)
         search_wrapper.addStretch()
 
-        # Filter tabs
         filter_wrapper = QHBoxLayout()
         filter_wrapper.addStretch()
         self.search_filter_buttons = {}
@@ -904,7 +934,6 @@ class MainWindow(QMainWindow):
         layout.addLayout(search_wrapper)
         layout.addLayout(filter_wrapper)
 
-        # Search History section
         self.search_history_section = QWidget()
         sh_outer = QVBoxLayout(self.search_history_section)
         sh_outer.setContentsMargins(0, 0, 0, 0)
@@ -934,7 +963,6 @@ class MainWindow(QMainWindow):
         self.search_status_label.setStyleSheet("color: #777; font-size: 11px;")
         layout.addWidget(self.search_status_label)
 
-        # Dynamic results container
         self.search_results_layout = QVBoxLayout()
         self.search_results_layout.setSpacing(16)
         layout.addLayout(self.search_results_layout)
@@ -1046,7 +1074,6 @@ class MainWindow(QMainWindow):
         if request_id != self._search_request_id:
             return
 
-        # Convert downloaded image bytes to QPixmap on the GUI thread
         for url, raw in image_bytes.items():
             if url not in self._pixmap_cache:
                 img = QImage()
@@ -1078,7 +1105,6 @@ class MainWindow(QMainWindow):
 
         self.search_status_label.hide()
 
-        # --- ARTISTS + THEIR SONGS ---
         if show_artists and artists:
             artists_lbl = QLabel(f"ARTISTS ({len(artists)})")
             artists_lbl.setObjectName("SectionTitle")
@@ -1181,7 +1207,6 @@ class MainWindow(QMainWindow):
                 ac_layout.addLayout(tracks_layout, 2)
                 self.search_results_layout.addWidget(artist_card)
 
-        # --- SONGS LIST ---
         if show_songs and tracks:
             songs_lbl = QLabel(f"SONGS ({len(tracks)})")
             songs_lbl.setObjectName("SectionTitle")
@@ -1297,7 +1322,7 @@ class MainWindow(QMainWindow):
             self.library_filter_buttons[f] = btn
         layout.addLayout(title_row)
 
-        # --- LIKED SONGS SECTION ---
+        # --- LIKED SONGS ---
         self.liked_section_widget = QWidget()
         liked_section_layout = QVBoxLayout(self.liked_section_widget)
         liked_section_layout.setContentsMargins(0, 0, 0, 0)
@@ -1353,7 +1378,7 @@ class MainWindow(QMainWindow):
         liked_section_layout.addLayout(self.liked_songs_container)
         layout.addWidget(self.liked_section_widget)
 
-        # --- RECENTLY PLAYED SECTION ---
+        # --- RECENTLY PLAYED ---
         self.recent_section_widget = QWidget()
         recent_section_layout = QVBoxLayout(self.recent_section_widget)
         recent_section_layout.setContentsMargins(0, 0, 0, 0)
@@ -1496,7 +1521,6 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(player_bar)
         layout.setContentsMargins(20, 10, 20, 10)
 
-        # Pre-build crisp vector icons
         self._play_icon = self._make_play_icon(16, "#000000")
         self._pause_icon = self._make_pause_icon(16, "#000000")
         self._vol_icon = self._make_volume_icon(16, "#b3b3b3", muted=False)
