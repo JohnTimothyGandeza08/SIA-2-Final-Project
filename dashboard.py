@@ -1,5 +1,6 @@
 # dashboard.py
 import sys
+import os
 from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtWidgets import (
@@ -14,8 +15,9 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from theme import DARK_THEME
 import jamendo_api
 
-# Import your Game Hub from main_window.py
-from ui.main_window import MainWindow as GameHubWindow
+# --- THE FIX: Dynamically add the 'ui' folder to the Python path ---
+sys.path.append(os.path.join(os.path.dirname(__file__), 'ui'))
+from main_window import MainWindow as GameHubWindow
 
 class ClickableFrame(QFrame):
     clicked = Signal()
