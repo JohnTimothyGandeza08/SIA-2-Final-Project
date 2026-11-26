@@ -538,6 +538,996 @@ class GameHubWindow(QMainWindow):
 
 
 # ======================================================================
+# VIDEO (Video tab)
+# ======================================================================
+VIDEO_STYLE = """
+QWidget {
+    background-color: #080B14;
+    color: #FFFFFF;
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+}
+QLineEdit {
+    background-color: #151A28;
+    border: 1px solid #252B3D;
+    border-radius: 20px;
+    padding: 8px 15px;
+    color: white;
+    font-size: 13px;
+}
+QLineEdit:focus {
+    border: 1px solid #3B82F6;
+    background-color: #1A2033;
+}
+QPushButton#NavBtn {
+    background-color: transparent;
+    border: none;
+    border-radius: 16px;
+    padding: 8px 16px;
+    color: #9CA3AF;
+    font-weight: 600;
+    font-size: 13px;
+}
+QPushButton#NavBtn:hover { color: #FFFFFF; }
+QPushButton#NavBtnActive {
+    background-color: #FFFFFF;
+    border: none;
+    border-radius: 16px;
+    padding: 8px 16px;
+    color: #080B14;
+    font-weight: 700;
+    font-size: 13px;
+}
+#HeroFrame {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #080B14, stop:0.3 #101D35, stop:0.6 #2A1B30, stop:1 #080B14);
+    border-radius: 16px;
+    border: 1px solid #1F2937;
+}
+QLabel#HeroTitle {
+    background: transparent;
+    font-size: 38px;
+    font-weight: 900;
+    color: white;
+}
+QLabel#HeroDesc {
+    background: transparent;
+    font-size: 15px;
+    color: #D1D5DB;
+}
+QLabel#TagLabel {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #E5E7EB;
+}
+QPushButton#PlayBtn {
+    background-color: #0056D2;
+    border-radius: 22px;
+    border: none;
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+}
+QPushButton#PlayBtn:hover { background-color: #2563EB; }
+QPushButton#SeeMoreBtn {
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 24px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+}
+QPushButton#SeeMoreBtn:hover { background-color: rgba(255, 255, 255, 0.2); }
+QScrollArea { border: none; background: transparent; }
+QScrollBar:horizontal { height: 0px; background: transparent; }
+QScrollBar:vertical { width: 8px; background: transparent; }
+QScrollBar::handle:vertical { background: #252B3D; border-radius: 4px; min-height: 20px; }
+QPushButton#LogoBtn {
+    background: transparent;
+    border: none;
+    font-size: 22px;
+    font-weight: 900;
+    color: white;
+    text-align: left;
+    padding: 0;
+}
+QLabel#ShelfIcon { font-size: 18px; color: #3B82F6; background: transparent; }
+QLabel#ShelfTitle { font-size: 20px; font-weight: 700; color: white; background: transparent; }
+QLabel#ViewAllLink { font-size: 12px; color: #3B82F6; background: transparent; }
+QPushButton#ArrowBtn {
+    background-color: #151A28;
+    border: 1px solid #252B3D;
+    border-radius: 16px;
+    color: #A0AAB5;
+    font-size: 18px;
+    font-weight: 700;
+}
+QPushButton#ArrowBtn:hover { background-color: #1F2937; color: white; border-color: #3B82F6; }
+QLabel#RatingBadge {
+    background-color: rgba(13, 17, 23, 0.92);
+    border: 2px solid #10B981;
+    border-radius: 17px;
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+}
+QLabel#PosterRibbon {
+    background-color: #0056D2;
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+}
+QFrame#FilterSidebar {
+    background-color: #0D1117;
+    border: 1px solid #1F2937;
+    border-radius: 14px;
+    margin-right: 20px;
+}
+QLabel#FilterHeading { font-size: 16px; font-weight: 800; color: white; background: transparent; }
+QLabel#FilterLabel { font-size: 13px; font-weight: 600; color: #D1D5DB; background: transparent; }
+QLabel#MutedLabel { color: #9CA3AF; font-size: 12px; background: transparent; }
+QComboBox {
+    background-color: #151A28;
+    border: 1px solid #252B3D;
+    border-radius: 10px;
+    padding: 6px 12px;
+    color: white;
+    font-size: 13px;
+}
+QComboBox:hover { border-color: #3B82F6; }
+QComboBox::drop-down { border: none; width: 22px; }
+QComboBox QAbstractItemView {
+    background-color: #151A28;
+    color: white;
+    border: 1px solid #252B3D;
+    selection-background-color: #0056D2;
+    outline: 0;
+}
+QPushButton#IconBtn {
+    background-color: #151A28;
+    border: 1px solid #252B3D;
+    border-radius: 10px;
+    color: #A0AAB5;
+    font-size: 16px;
+}
+QPushButton#IconBtn:hover { border-color: #3B82F6; color: white; }
+"""
+
+_VIDEO_NAM = None
+
+
+def _video_nam():
+    global _VIDEO_NAM
+    if _VIDEO_NAM is None:
+        _VIDEO_NAM = QNetworkAccessManager()
+    return _VIDEO_NAM
+
+
+class RemoteImage(QObject):
+    loaded = Signal(QPixmap)
+    failed = Signal()
+    _cache = {}
+
+    def __init__(self, url: str, parent=None):
+        super().__init__(parent)
+        self.url = url
+        self.reply = None
+
+        if not url:
+            QTimer.singleShot(0, self.failed.emit)
+            return
+        if url in RemoteImage._cache:
+            pix = RemoteImage._cache[url]
+            QTimer.singleShot(0, lambda: self.loaded.emit(pix))
+            return
+
+        request = QNetworkRequest(QUrl(url))
+        request.setHeader(
+            QNetworkRequest.UserAgentHeader,
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
+        request.setAttribute(
+            QNetworkRequest.Attribute.RedirectPolicyAttribute,
+            QNetworkRequest.RedirectPolicy.NoLessSafeRedirectPolicy,
+        )
+        self.reply = _video_nam().get(request)
+        self.reply.finished.connect(self._on_done)
+
+    def _on_done(self):
+        reply = self.reply
+        self.reply = None
+        try:
+            if reply.error() == QNetworkReply.NetworkError.NoError:
+                pix = QPixmap()
+                pix.loadFromData(reply.readAll())
+                if not pix.isNull():
+                    RemoteImage._cache[self.url] = pix
+                    self.loaded.emit(pix)
+                    return
+            self.failed.emit()
+        finally:
+            reply.deleteLater()
+
+
+class PosterImage(QWidget):
+    def __init__(self, radius: int = 10, parent=None):
+        super().__init__(parent)
+        self._pix = None
+        self._radius = radius
+        self._hovered = False
+
+    def set_pixmap(self, pix: QPixmap):
+        self._pix = pix
+        self.update()
+
+    def set_hovered(self, hovered: bool):
+        self._hovered = hovered
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), self._radius, self._radius)
+        painter.setClipPath(path)
+
+        if self._pix and not self._pix.isNull():
+            scaled = self._pix.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            x = (scaled.width() - self.width()) // 2
+            y = (scaled.height() - self.height()) // 2
+            painter.drawPixmap(-x, -y, scaled)
+        else:
+            painter.fillRect(self.rect(), QColor("#1F2937"))
+
+        painter.setClipping(False)
+        pen = QPen(QColor("#FFFFFF") if self._hovered else QColor("#1F2937"))
+        pen.setWidth(2 if self._hovered else 1)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), self._radius, self._radius)
+        painter.end()
+
+
+class RatingBadge(QLabel):
+    def __init__(self, rating: float, parent=None):
+        super().__init__(f"{rating:.1f}", parent)
+        self.setObjectName("RatingBadge")
+        self.setFixedSize(34, 34)
+        self.setAlignment(Qt.AlignCenter)
+
+
+class PosterCard(QWidget):
+    card_clicked = Signal(dict)
+
+    def __init__(self, video_data: dict, width: int = 240, radius: int = 10, parent=None):
+        super().__init__(parent)
+        self.video_data = video_data
+        self.image_url = video_data.get("image_url")
+        self.rating = video_data.get("rating")
+        self.ribbon = video_data.get("ribbon")
+
+        height = int(width * 9 / 16)
+        self.setFixedSize(width, height)
+        self.setCursor(Qt.PointingHandCursor)
+
+        self.poster = PosterImage(radius=radius, parent=self)
+        self.poster.setGeometry(0, 0, width, height)
+
+        if self.image_url:
+            loader = RemoteImage(self.image_url, self)
+            loader.loaded.connect(self.poster.set_pixmap)
+
+        if self.rating is not None:
+            badge = RatingBadge(self.rating, parent=self)
+            badge.move(8, 8)
+
+        if self.ribbon:
+            rib = QLabel(self.ribbon, self)
+            rib.setObjectName("PosterRibbon")
+            rib.setAlignment(Qt.AlignCenter)
+            rib.setFixedHeight(22)
+            rib.setGeometry(0, height - 22, width, 22)
+
+    def enterEvent(self, event):
+        self.poster.set_hovered(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.poster.set_hovered(False)
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.card_clicked.emit(self.video_data)
+        super().mousePressEvent(event)
+
+
+class VideoShelf(QWidget):
+    view_all_clicked = Signal()
+    card_clicked = Signal(dict)
+
+    def __init__(self, title: str, icon: str = "", cards=None, card_width: int = 240, parent=None):
+        super().__init__(parent)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(10)
+
+        head = QHBoxLayout()
+        head.setSpacing(10)
+        if icon:
+            ic = QLabel(icon)
+            ic.setObjectName("ShelfIcon")
+            head.addWidget(ic)
+        title_lbl = QLabel(title)
+        title_lbl.setObjectName("ShelfTitle")
+        head.addWidget(title_lbl)
+
+        view_all = QLabel("View all")
+        view_all.setObjectName("ViewAllLink")
+        view_all.setCursor(Qt.PointingHandCursor)
+        view_all.mousePressEvent = lambda event: self.view_all_clicked.emit()
+        head.addWidget(view_all)
+        head.addStretch()
+
+        self.prev_btn = QPushButton("‹")
+        self.next_btn = QPushButton("›")
+        for btn in (self.prev_btn, self.next_btn):
+            btn.setObjectName("ArrowBtn")
+            btn.setFixedSize(32, 32)
+            btn.setCursor(Qt.PointingHandCursor)
+        self.prev_btn.clicked.connect(lambda: self._scroll(-200))
+        self.next_btn.clicked.connect(lambda: self._scroll(200))
+        head.addWidget(self.prev_btn)
+        head.addWidget(self.next_btn)
+        root.addLayout(head)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFixedHeight(int(card_width * 9 / 16) + 8)
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+
+        row_host = QWidget()
+        row_host.setStyleSheet("background: transparent;")
+        row = QHBoxLayout(row_host)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(12)
+        row.setAlignment(Qt.AlignLeft)
+        for data in cards or []:
+            card = PosterCard(data, width=card_width)
+            card.card_clicked.connect(self.card_clicked)
+            row.addWidget(card)
+        row.addStretch()
+        self.scroll.setWidget(row_host)
+        root.addWidget(self.scroll)
+
+    def _scroll(self, dx):
+        bar = self.scroll.horizontalScrollBar()
+        bar.setValue(bar.value() + dx)
+
+
+class VideoFilterSidebar(QFrame):
+    filters_changed = Signal(dict)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("FilterSidebar")
+        self.setFixedWidth(290)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 18, 18, 18)
+        root.setSpacing(4)
+
+        heading = QLabel("Filters")
+        heading.setObjectName("FilterHeading")
+        root.addWidget(heading)
+
+        label = QLabel("Duration")
+        label.setObjectName("FilterLabel")
+        root.addWidget(label)
+        self.duration = QComboBox()
+        self.duration.addItems(["Any length", "Under 5 mins", "5-15 mins", "Over 15 mins"])
+        self.duration.setMinimumHeight(38)
+        self.duration.currentTextChanged.connect(self._emit_filters)
+        root.addWidget(self.duration)
+        root.addStretch()
+
+    def _emit_filters(self):
+        self.filters_changed.emit({"duration": self.duration.currentText()})
+
+
+class TrendingPage(QWidget):
+    card_clicked = Signal(dict)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        self.sidebar = VideoFilterSidebar()
+        self.sidebar.filters_changed.connect(self.apply_filters)
+        root.addWidget(self.sidebar)
+
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(20, 10, 20, 20)
+        right_layout.setSpacing(14)
+
+        toolbar = QHBoxLayout()
+        filter_btn = QPushButton("⫶")
+        filter_btn.setObjectName("IconBtn")
+        filter_btn.setFixedSize(38, 38)
+        toolbar.addWidget(filter_btn)
+        toolbar.addStretch()
+        self.showing = QLabel("Showing 0 Videos")
+        self.showing.setObjectName("MutedLabel")
+        toolbar.addWidget(self.showing)
+        self.sort_by = QComboBox()
+        self.sort_by.addItems(["Default", "Title (A-Z)", "Title (Z-A)"])
+        self.sort_by.setFixedWidth(140)
+        self.sort_by.currentTextChanged.connect(self.apply_filters)
+        toolbar.addWidget(self.sort_by)
+        right_layout.addLayout(toolbar)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.grid_host = QWidget()
+        self.grid_host.setStyleSheet("background: transparent;")
+        self.grid = QGridLayout(self.grid_host)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setSpacing(16)
+        self.grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.scroll.setWidget(self.grid_host)
+        right_layout.addWidget(self.scroll, 1)
+        root.addWidget(right, 1)
+
+        self._original_data = []
+        self._current_cols = 3
+        self._current_width = 280
+
+    def set_cards(self, cards_data: list, cols: int = 3, card_width: int = 280):
+        self._original_data = list(cards_data or [])
+        self._current_cols = cols
+        self._current_width = card_width
+        self.apply_filters()
+
+    def apply_filters(self):
+        duration_filter = self.sidebar.duration.currentText()
+        filtered = []
+        for video in self._original_data:
+            secs = video.get("duration", 0) or 0
+            if duration_filter != "Any length":
+                if secs == 0:
+                    continue
+                if duration_filter == "Under 5 mins" and secs >= 300:
+                    continue
+                if duration_filter == "5-15 mins" and (secs < 300 or secs > 900):
+                    continue
+                if duration_filter == "Over 15 mins" and secs <= 900:
+                    continue
+            filtered.append(video)
+
+        sort_mode = self.sort_by.currentText()
+        if sort_mode == "Title (A-Z)":
+            filtered.sort(key=lambda item: item.get("title", "").lower())
+        elif sort_mode == "Title (Z-A)":
+            filtered.sort(key=lambda item: item.get("title", "").lower(), reverse=True)
+
+        while self.grid.count():
+            item = self.grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        for index, data in enumerate(filtered):
+            card = PosterCard(data, width=self._current_width)
+            card.card_clicked.connect(self.card_clicked)
+            row, col = divmod(index, self._current_cols)
+            self.grid.addWidget(card, row, col)
+        self.showing.setText(f"Showing {len(filtered)} Videos")
+
+
+class VideoHeroBanner(QFrame):
+    def __init__(self, video_data: dict, show_details_cb, parent=None):
+        super().__init__(parent)
+        self.setObjectName("HeroFrame")
+        self.setMinimumHeight(400)
+
+        self.bg_label = QLabel(self)
+        self.bg_label.setScaledContents(True)
+        self.overlay = QLabel(self)
+        self.overlay.setStyleSheet("background-color: rgba(8, 11, 20, 0.7); border-radius: 16px;")
+
+        hero_layout = QVBoxLayout(self)
+        hero_layout.setContentsMargins(50, 50, 50, 30)
+        hero_layout.addStretch()
+
+        title = QLabel(video_data.get("title", "Loading Videos...").upper())
+        title.setObjectName("HeroTitle")
+        title.setWordWrap(True)
+        hero_layout.addWidget(title)
+
+        tags = QHBoxLayout()
+        duration = QLabel("00:00")
+        duration.setObjectName("TagLabel")
+        genre = QLabel(video_data.get("genre", "Please wait"))
+        genre.setObjectName("TagLabel")
+        tags.addWidget(duration)
+        tags.addWidget(genre)
+        tags.addStretch()
+        hero_layout.addLayout(tags)
+
+        desc = QLabel(video_data.get(
+            "desc",
+            "Fetching the latest and trending movies from the API. This will only take a moment.",
+        ))
+        desc.setObjectName("HeroDesc")
+        desc.setWordWrap(True)
+        hero_layout.addWidget(desc)
+        hero_layout.addSpacing(20)
+
+        bottom = QHBoxLayout()
+        play_btn = QPushButton("▶")
+        play_btn.setObjectName("PlayBtn")
+        play_btn.setFixedSize(44, 44)
+        play_btn.setCursor(Qt.PointingHandCursor)
+        play_btn.clicked.connect(lambda: show_details_cb(video_data))
+        details_btn = QPushButton("ⓘ  Details")
+        details_btn.setObjectName("SeeMoreBtn")
+        details_btn.setFixedHeight(44)
+        details_btn.setFixedWidth(140)
+        details_btn.setCursor(Qt.PointingHandCursor)
+        details_btn.clicked.connect(lambda: show_details_cb(video_data))
+        bottom.addWidget(play_btn)
+        bottom.addSpacing(10)
+        bottom.addWidget(details_btn)
+        bottom.addStretch()
+        hero_layout.addLayout(bottom)
+
+        if video_data and video_data.get("image_url"):
+            loader = RemoteImage(video_data["image_url"], self)
+            loader.loaded.connect(self._set_bg)
+
+    def _set_bg(self, pix: QPixmap):
+        self.bg_label.setPixmap(pix)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.bg_label.setGeometry(0, 0, self.width(), self.height())
+        self.overlay.setGeometry(0, 0, self.width(), self.height())
+
+
+class VideoDetailsPage(QWidget):
+    def __init__(self, play_video_cb, go_back_cb, parent=None):
+        super().__init__(parent)
+        self.play_video_cb = play_video_cb
+        self.current_video = {}
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(40, 20, 40, 40)
+        layout.setSpacing(20)
+
+        top_bar = QHBoxLayout()
+        back_btn = QPushButton("← Back")
+        back_btn.setObjectName("NavBtn")
+        back_btn.setCursor(Qt.PointingHandCursor)
+        back_btn.clicked.connect(go_back_cb)
+        top_bar.addWidget(back_btn)
+        top_bar.addStretch()
+        layout.addLayout(top_bar)
+
+        content = QHBoxLayout()
+        content.setSpacing(40)
+        self.poster_label = QLabel()
+        self.poster_label.setFixedSize(640, 360)
+        self.poster_label.setStyleSheet("background-color: #1F2937; border-radius: 12px;")
+        content.addWidget(self.poster_label)
+
+        info = QVBoxLayout()
+        info.setSpacing(15)
+        self.title_lbl = QLabel("Video Title")
+        self.title_lbl.setStyleSheet("font-size: 36px; font-weight: 900; color: white; background: transparent;")
+        self.title_lbl.setWordWrap(True)
+        self.genre_lbl = QLabel("Category")
+        self.genre_lbl.setStyleSheet("font-size: 16px; color: #A0AAB5; font-weight: bold; background: transparent;")
+        self.rating_lbl = QLabel("⭐ 0.0")
+        self.rating_lbl.setStyleSheet("font-size: 18px; color: #10B981; font-weight: bold; background: transparent;")
+        self.desc_lbl = QLabel("Description...")
+        self.desc_lbl.setStyleSheet("font-size: 16px; color: #D1D5DB; background: transparent;")
+        self.desc_lbl.setWordWrap(True)
+        info.addWidget(self.title_lbl)
+        info.addWidget(self.genre_lbl)
+        info.addWidget(self.rating_lbl)
+        info.addSpacing(10)
+        info.addWidget(self.desc_lbl)
+        info.addStretch()
+
+        self.play_btn = QPushButton("▶  Play Video")
+        self.play_btn.setFixedSize(200, 50)
+        self.play_btn.setCursor(Qt.PointingHandCursor)
+        self.play_btn.setStyleSheet(
+            "QPushButton { background-color: #0056D2; color: white; border-radius: 25px; "
+            "font-size: 18px; font-weight: bold; border: none; }"
+            "QPushButton:hover { background-color: #2563EB; }"
+        )
+        self.play_btn.clicked.connect(self._on_play)
+        info.addWidget(self.play_btn)
+        content.addLayout(info, 1)
+        layout.addLayout(content)
+        layout.addStretch()
+
+    def load_video(self, video_data: dict):
+        self.current_video = video_data
+        self.title_lbl.setText(video_data.get("title", "Unknown Title"))
+        self.genre_lbl.setText(video_data.get("genre", "Uncategorized"))
+        rating = video_data.get("rating")
+        if rating is not None:
+            self.rating_lbl.setText(f"⭐ {rating}")
+            self.rating_lbl.show()
+        else:
+            self.rating_lbl.hide()
+        self.desc_lbl.setText(video_data.get("desc", "No description available for this video."))
+        url = video_data.get("image_url")
+        if url:
+            loader = RemoteImage(url, self)
+            loader.loaded.connect(self._set_poster)
+
+    def _set_poster(self, pix):
+        self.poster_label.setPixmap(
+            pix.scaled(640, 360, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        )
+
+    def _on_play(self):
+        source = self.current_video.get("source")
+        if source:
+            self.play_video_cb(source, self.current_video.get("title", "Video"))
+
+
+class VideoHomePage(QWidget):
+    def __init__(self, latest_videos, trending_videos, show_details_cb, view_all_cb, parent=None):
+        super().__init__(parent)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        outer.addWidget(scroll)
+
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(20, 15, 20, 20)
+        layout.setSpacing(24)
+
+        hero_video = latest_videos[0] if latest_videos else {}
+        layout.addWidget(VideoHeroBanner(hero_video, show_details_cb))
+
+        latest = VideoShelf("Latest Uploads", icon="🆕", cards=latest_videos[:10], card_width=260)
+        latest.card_clicked.connect(show_details_cb)
+        latest.view_all_clicked.connect(lambda videos=list(latest_videos): view_all_cb(videos, "Latest Uploads"))
+        layout.addWidget(latest)
+
+        trending = VideoShelf("Trending Now", icon="🔥", cards=trending_videos[:10], card_width=260)
+        trending.card_clicked.connect(show_details_cb)
+        trending.view_all_clicked.connect(lambda videos=list(trending_videos): view_all_cb(videos, "Trending Now"))
+        layout.addWidget(trending)
+        layout.addStretch()
+        scroll.setWidget(content)
+
+
+class VideoPlayerDialog(QDialog):
+    def __init__(self, url: str, title: str = "Now Playing", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(1280, 720)
+        self.setStyleSheet("background-color: #080B14;")
+        self._pause_dashboard_music()
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        self.video = QVideoWidget()
+        self.video.setStyleSheet("background-color: black;")
+        root.addWidget(self.video, 1)
+
+        bar = QWidget()
+        bar.setFixedHeight(64)
+        bar.setStyleSheet("background-color: #0D1117;")
+        controls = QHBoxLayout(bar)
+        controls.setContentsMargins(15, 8, 15, 8)
+        controls.setSpacing(12)
+
+        skip_style = (
+            "QPushButton { background:#1F2937; color:white; border-radius:8px; font-size:13px; font-weight:bold; }"
+            "QPushButton:hover { background:#374151; }"
+        )
+        self.skip_back_btn = QPushButton("⏪ 10s")
+        self.skip_back_btn.setFixedSize(60, 42)
+        self.skip_back_btn.setStyleSheet(skip_style)
+        self.skip_back_btn.clicked.connect(lambda: self._skip(-10000))
+
+        self.play_btn = QPushButton("⏸")
+        self.play_btn.setFixedSize(42, 42)
+        self.play_btn.setStyleSheet(
+            "QPushButton { background:#0056D2; color:white; border-radius:21px; font-size:18px; font-weight:bold; }"
+            "QPushButton:hover { background:#2563EB; }"
+        )
+        self.play_btn.clicked.connect(self._toggle_play)
+
+        self.skip_fwd_btn = QPushButton("10s ⏩")
+        self.skip_fwd_btn.setFixedSize(60, 42)
+        self.skip_fwd_btn.setStyleSheet(skip_style)
+        self.skip_fwd_btn.clicked.connect(lambda: self._skip(10000))
+
+        self.seek = QSlider(Qt.Horizontal)
+        self.seek.sliderMoved.connect(self._on_seek)
+        self.seek.sliderPressed.connect(self._on_seek_start)
+        self.seek.sliderReleased.connect(self._on_seek_end)
+
+        self.time_lbl = QLabel("0:00 / 0:00")
+        self.time_lbl.setStyleSheet("color:#E5E7EB; font-size:12px; background: transparent;")
+
+        self.audio = QAudioOutput()
+        self.audio.setVolume(1.0)
+        self.vol = QSlider(Qt.Horizontal)
+        self.vol.setFixedWidth(110)
+        self.vol.setRange(0, 100)
+        self.vol.setValue(100)
+        self.vol.valueChanged.connect(lambda value: self.audio.setVolume(value / 100.0))
+
+        controls.addWidget(self.skip_back_btn)
+        controls.addWidget(self.play_btn)
+        controls.addWidget(self.skip_fwd_btn)
+        controls.addWidget(self.seek, 1)
+        controls.addWidget(self.time_lbl)
+        vol_icon = QLabel("🔊")
+        vol_icon.setStyleSheet("background: transparent; color: white;")
+        controls.addWidget(vol_icon)
+        controls.addWidget(self.vol)
+        root.addWidget(bar)
+
+        self.player = QMediaPlayer()
+        self.player.setAudioOutput(self.audio)
+        self.player.setVideoOutput(self.video)
+        self.player.positionChanged.connect(self._on_pos)
+        self.player.durationChanged.connect(self._on_dur)
+        self.player.playbackStateChanged.connect(self._on_state)
+        self.player.errorOccurred.connect(self._on_err)
+        self.player.setSource(QUrl(url))
+        self.player.play()
+
+    def _pause_dashboard_music(self):
+        widget = self.parent()
+        while widget is not None:
+            player = getattr(widget, "media_player", None)
+            if player is not None and player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+                player.pause()
+                return
+            widget = widget.parent()
+
+    def _skip(self, ms: int):
+        self.player.setPosition(max(0, self.player.position() + ms))
+
+    def _toggle_play(self):
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+        else:
+            self.player.play()
+
+    def _on_seek_start(self):
+        self._was_playing = self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        self.player.pause()
+
+    def _on_seek(self, pos):
+        self.player.setPosition(pos)
+
+    def _on_seek_end(self):
+        if getattr(self, "_was_playing", False):
+            self.player.play()
+
+    def _on_pos(self, pos):
+        if not self.seek.isSliderDown():
+            self.seek.setValue(pos)
+        self.time_lbl.setText(f"{self._fmt(pos)} / {self._fmt(self.player.duration())}")
+
+    def _on_dur(self, dur):
+        self.seek.setRange(0, max(0, dur))
+        self.time_lbl.setText(f"{self._fmt(0)} / {self._fmt(dur)}")
+
+    def _on_state(self, state):
+        self.play_btn.setText("⏸" if state == QMediaPlayer.PlaybackState.PlayingState else "▶")
+
+    def _on_err(self, err, msg):
+        print(f"[player] {err}: {msg}")
+        self.time_lbl.setText("playback error")
+
+    @staticmethod
+    def _fmt(ms: int) -> str:
+        seconds = max(0, int(ms // 1000))
+        minutes, seconds = divmod(seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
+
+    def closeEvent(self, event):
+        self.player.stop()
+        super().closeEvent(event)
+
+
+class VideoHub(QWidget):
+    """Movie browser embedded in the dashboard Video tab."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("VideoHub")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet(VIDEO_STYLE)
+
+        self.latest_videos = []
+        self.trending_videos = []
+        self._latest_ready = False
+        self._trending_ready = False
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(20, 15, 20, 20)
+        root.setSpacing(15)
+
+        nav = QHBoxLayout()
+        logo = QPushButton("▶  Videos")
+        logo.setObjectName("LogoBtn")
+        logo.setCursor(Qt.PointingHandCursor)
+        nav.addWidget(logo)
+        nav.addSpacing(20)
+
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search videos... (press Enter)")
+        self.search.setFixedWidth(400)
+        self.search.returnPressed.connect(self._on_search)
+        nav.addWidget(self.search)
+        nav.addStretch()
+
+        self.welcome_label = QLabel("Welcome, User!")
+        self.welcome_label.setStyleSheet(
+            "color: #0055ff; font-size: 14px; font-weight: bold; background: transparent;"
+        )
+        nav.addWidget(self.welcome_label)
+
+        self.btn_home = QPushButton("Home")
+        self.btn_trending = QPushButton("🔥 Trending Video")
+        for btn in (self.btn_home, self.btn_trending):
+            btn.setObjectName("NavBtn")
+            btn.setCursor(Qt.PointingHandCursor)
+            nav.addWidget(btn)
+        root.addLayout(nav)
+
+        self.stack = QStackedWidget()
+        root.addWidget(self.stack, 1)
+
+        self.home_page = VideoHomePage(self.latest_videos, self.trending_videos, self._show_details, self._view_all)
+        self.trending_page = TrendingPage()
+        self.trending_page.card_clicked.connect(self._show_details)
+        self.details_page = VideoDetailsPage(self._play_video, self._go_back)
+        self.stack.addWidget(self.home_page)
+        self.stack.addWidget(self.trending_page)
+        self.stack.addWidget(self.details_page)
+
+        logo.clicked.connect(lambda: self._switch(0))
+        self.btn_home.clicked.connect(lambda: self._switch(0))
+        self.btn_trending.clicked.connect(lambda: self._switch(1))
+        self._switch(0)
+
+        self.pixabay_client = PixabayVideoClient("58841597-5e23bdcee5aa3ed60c1ed9cec", self)
+        self.pixabay_client.results_ready.connect(self._on_search_results)
+        self.pixabay_client.search_failed.connect(self._on_search_failed)
+
+        self.archive_latest = VideoSearchClient(self)
+        self.archive_latest.results_ready.connect(self._on_latest_loaded)
+        self.archive_latest.search_failed.connect(lambda msg: self._on_api_failed("latest"))
+        self.archive_latest.fetch_latest(limit=12)
+
+        self.archive_trending = VideoSearchClient(self)
+        self.archive_trending.results_ready.connect(self._on_trending_loaded)
+        self.archive_trending.search_failed.connect(lambda msg: self._on_api_failed("trending"))
+        self.archive_trending.fetch_trending(limit=12)
+
+    def _on_latest_loaded(self, videos):
+        self.latest_videos = videos
+        self._latest_ready = True
+        self._check_home_ready()
+
+    def _on_trending_loaded(self, videos):
+        self.trending_videos = videos
+        self._trending_ready = True
+        self._check_home_ready()
+
+    def _on_api_failed(self, which):
+        if which == "latest":
+            self._latest_ready = True
+        else:
+            self._trending_ready = True
+        self._check_home_ready()
+
+    def _check_home_ready(self):
+        if not (self._latest_ready and self._trending_ready):
+            return
+        self.stack.removeWidget(self.home_page)
+        self.home_page.deleteLater()
+        self.home_page = VideoHomePage(
+            self.latest_videos, self.trending_videos, self._show_details, self._view_all
+        )
+        self.stack.insertWidget(0, self.home_page)
+        self.trending_page.set_cards(self.latest_videos + self.trending_videos, cols=3, card_width=280)
+        self._switch(0)
+
+    def _view_all(self, videos, title):
+        self.trending_page.set_cards(videos, cols=3, card_width=280)
+        self._switch(1)
+
+    def _switch(self, index: int):
+        self.stack.setCurrentIndex(index)
+        for btn in (self.btn_home, self.btn_trending):
+            btn.setObjectName("NavBtn")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+        active = self.btn_home if index == 0 else self.btn_trending
+        active.setObjectName("NavBtnActive")
+        active.style().unpolish(active)
+        active.style().polish(active)
+
+    def _show_details(self, video_data: dict):
+        if not video_data:
+            return
+        self.details_page.load_video(video_data)
+        self.stack.setCurrentWidget(self.details_page)
+
+    def _go_back(self):
+        self._switch(0)
+
+    def _play_video(self, url: str, title: str = "Now Playing"):
+        VideoPlayerDialog(url, title, self).exec()
+
+    def _on_search(self):
+        query = self.search.text().strip()
+        if not query:
+            return
+        self.search.setPlaceholderText(f'Searching for "{query}"...')
+        self.search.setEnabled(False)
+        self.pixabay_client.search(query, limit=20)
+
+    def _on_search_results(self, videos: list):
+        self.search.setEnabled(True)
+        self.search.setPlaceholderText("Search videos... (press Enter)")
+        if not videos:
+            self._on_search_failed("No related videos found.")
+            return
+        self.trending_page.set_cards(videos, cols=3, card_width=280)
+        self._switch(1)
+
+    def _on_search_failed(self, message: str):
+        self.search.setEnabled(True)
+        self.search.setPlaceholderText("Search videos... (press Enter)")
+        self.welcome_label.setText(message)
+        QTimer.singleShot(3000, lambda: self.welcome_label.setText(
+            f"Welcome, {self._dashboard_username()}!"
+        ))
+
+    def _dashboard_username(self):
+        widget = self.parent()
+        while widget is not None:
+            username = getattr(widget, "username", None)
+            if username:
+                return username
+            widget = widget.parent()
+        return "User"
+
+
+# ======================================================================
 # DASHBOARD
 # ======================================================================
 class ClickableFrame(QFrame):
@@ -970,22 +1960,18 @@ class MainWindow(QMainWindow):
     # PAGE 3: VIDEO
     # ==========================================
     def build_video_page(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setAlignment(Qt.AlignCenter)
-        
-        self.video_welcome_label = QLabel("Welcome, User!")
-        self.video_welcome_label.setStyleSheet("color: #0055ff; font-size: 18px; font-weight: bold; margin-bottom: 10px;")
-        
-        title = QLabel("Video")
-        title.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
-        sub = QLabel("Video streaming is coming soon.")
-        sub.setStyleSheet("color: #777; font-size: 12px;")
-        
-        layout.addWidget(self.video_welcome_label, alignment=Qt.AlignCenter)
-        layout.addWidget(title, alignment=Qt.AlignCenter)
-        layout.addWidget(sub, alignment=Qt.AlignCenter)
-        return page
+        """Embeds the movie browser in the Video tab."""
+        wrapper = QWidget()
+        layout = QVBoxLayout(wrapper)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self.video_hub = VideoHub()
+        self.video_hub.setMinimumSize(0, 0)
+        self.video_hub.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.video_welcome_label = self.video_hub.welcome_label
+        layout.addWidget(self.video_hub)
+        return wrapper
 
     # ==========================================
     # VECTOR PLAYER ICONS & UTILS

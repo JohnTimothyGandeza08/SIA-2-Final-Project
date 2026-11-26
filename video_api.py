@@ -2,6 +2,7 @@
 from PySide6.QtCore import QObject, Signal, QUrl, QUrlQuery
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 import json
+from urllib.parse import quote
 
 
 class VideoSearchClient(QObject):
@@ -139,7 +140,7 @@ class VideoSearchClient(QObject):
             for f in files:
                 name = f.get("name", "")
                 if name.lower().endswith(".mp4"):
-                    playable_url = f"https://archive.org/download/{identifier}/{name}"
+                    playable_url = f"https://archive.org/download/{quote(identifier)}/{quote(name, safe='/')}"
                     if "length" in f:
                         try:
                             duration = int(float(f["length"]))
