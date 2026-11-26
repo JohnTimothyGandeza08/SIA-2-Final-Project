@@ -1383,13 +1383,6 @@ class VideoHub(QWidget):
         logo.setObjectName("LogoBtn")
         logo.setCursor(Qt.PointingHandCursor)
         nav.addWidget(logo)
-        nav.addSpacing(20)
-
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Search videos... (press Enter)")
-        self.search.setFixedWidth(400)
-        self.search.returnPressed.connect(self._on_search)
-        nav.addWidget(self.search)
         nav.addStretch()
 
         self.welcome_label = QLabel("Welcome, User!")
@@ -1492,17 +1485,13 @@ class VideoHub(QWidget):
     def _play_video(self, url: str, title: str = "Now Playing"):
         VideoPlayerDialog(url, title, self).exec()
 
-    def _on_search(self):
-        query = self.search.text().strip()
+    def _on_search(self, query):
+        query = (query or "").strip()
         if not query:
             return
-        self.search.setPlaceholderText(f'Searching for "{query}"...')
-        self.search.setEnabled(False)
         self.pixabay_client.search(query, limit=20)
 
     def _on_search_results(self, videos: list):
-        self.search.setEnabled(True)
-        self.search.setPlaceholderText("Search videos... (press Enter)")
         if not videos:
             self._on_search_failed("No related videos found.")
             return
@@ -1510,9 +1499,9 @@ class VideoHub(QWidget):
         self._switch(1)
 
     def _on_search_failed(self, message: str):
-        self.search.setEnabled(True)
-        self.search.setPlaceholderText(message)
-        QTimer.singleShot(3000, lambda: self.search.setPlaceholderText("Search videos... (press Enter)"))
+        previous = self.welcome_label.text()
+        self.welcome_label.setText(message)
+        QTimer.singleShot(3000, lambda: self.welcome_label.setText(previous))
 
 
 # ======================================================================
@@ -2347,8 +2336,7 @@ class MainWindow(QMainWindow):
         if not query:
             return
         if self.stacked_widget.currentIndex() == 3 and hasattr(self, "video_hub"):
-            self.video_hub.search.setText(query)
-            self.video_hub._on_search()
+            self.video_hub._on_search(query)
             return
         self._set_top_mode(0)
         self.set_page(1)
