@@ -1,12 +1,14 @@
 # dashboard.py
 import sys
-import os
+import random
+import html
+import requests
 from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QScrollArea, QFrame,
-    QSlider, QGridLayout, QStackedWidget, QSizePolicy
+    QSlider, QGridLayout, QStackedWidget, QSizePolicy, QMessageBox
 )
 from PySide6.QtCore import Qt, QPointF, QUrl, QThread, Signal, QByteArray, QTimer, QSize
 from PySide6.QtGui import QPainter, QColor, QPolygonF, QBrush, QPixmap, QImage, QIcon, QPen
@@ -15,10 +17,580 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from theme import DARK_THEME
 import jamendo_api
 
-# --- THE FIX: Dynamically add the 'ui' folder to the Python path ---
-sys.path.append(os.path.join(os.path.dirname(__file__), 'ui'))
-from main_window import MainWindow as GameHubWindow
 
+# ======================================================================
+# GAMES: API HELPERS (formerly api/cartoon_api.py, pokemon_api.py, trivia_api.py)
+# ======================================================================
+
+# ---- Cartoon (Rick and Morty) API ----
+def fetch_cartoon_images(count=8):
+    """Fetches a list of random cartoon character image URLs from Rick and Morty API."""
+    # Pick a random page (there are 42 pages of characters)
+    page = random.randint(1, 42)
+    url = f"https://rickandmortyapi.com/api/character/?page={page}"
+
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    data = response.json().get("results", [])
+
+    if len(data) < count:
+        raise ValueError("Not enough characters found.")
+
+    # Randomly select the required number of characters
+    selected = random.sample(data, count)
+    return [char["image"] for char in selected]
+
+
+# ---- Pokemon API ----
+POKEAPI_URL = "https://pokeapi.co/api/v2/pokemon/"
+
+
+def fetch_random_pokemon():
+    # We limit to Gen 1 (1-151) so the names are recognizable
+    random_id = random.randint(1, 151)
+    response = requests.get(f"{POKEAPI_URL}{random_id}", timeout=10)
+    response.raise_for_status()
+    data = response.json()
+
+    name = data["name"].capitalize()
+    image_url = data["sprites"]["other"]["official-artwork"]["front_default"]
+
+    # Fetch the image bytes
+    img_response = requests.get(image_url, timeout=10)
+    img_response.raise_for_status()
+    image_data = img_response.content
+
+    return name, image_data
+
+
+def fetch_random_names(amount=3):
+    """Fetches a few random wrong answers."""
+    names = set()
+    while len(names) < amount:
+        random_id = random.randint(1, 151)
+        response = requests.get(f"{POKEAPI_URL}{random_id}", timeout=5)
+        if response.status_code == 200:
+            names.add(response.json()["name"].capitalize())
+    return list(names)
+
+
+# ---- Trivia API ----
+TRIVIA_URL = "https://opentdb.com/api.php"
+
+
+def fetch_questions(amount=5, difficulty="medium"):
+    params = {"amount": amount, "type": "multiple", "difficulty": difficulty}
+    response = requests.get(TRIVIA_URL, params=params, timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    if data["response_code"] != 0:
+        raise ValueError("Trivia API returned an error.")
+    # Unescape HTML entities that the API returns
+    for q in data["results"]:
+        q["question"] = html.unescape(q["question"])
+        q["correct_answer"] = html.unescape(q["correct_answer"])
+        q["incorrect_answers"] = [html.unescape(a) for a in q["incorrect_answers"]]
+    return data["results"]
+
+
+# ======================================================================
+# GAMES: BASE CLASS (formerly games/base_game.py)
+# ======================================================================
+class BaseGame(QWidget):
+    """Every game must emit this signal when the user wants to return to the menu."""
+    back_requested = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+
+    def start(self):
+        """Override this method to load data and initialise the game."""
+        raise NotImplementedError
+
+
+# ======================================================================
+# GAMES: TRIVIA (formerly games/trivia_game.py)
+# ======================================================================
+class TriviaGame(BaseGame):
+    def __init__(self):
+        super().__init__()
+        self.questions = []
+        self.current_index = 0
+        self.score = 0
+
+        self.layout.addStretch()
+
+        self.question_label = QLabel("Loading question...")
+        self.question_label.setWordWrap(True)
+        self.question_label.setAlignment(Qt.AlignCenter)
+        self.question_label.setStyleSheet("font-size: 22px; font-weight: bold; margin-bottom: 20px;")
+        self.layout.addWidget(self.question_label)
+
+        self.answer_layout = QVBoxLayout()
+        self.answer_layout.setSpacing(15)
+        self.answer_layout.setAlignment(Qt.AlignCenter)  # Center the buttons
+        self.answer_buttons = []
+        for _ in range(4):
+            btn = QPushButton()
+            btn.setFixedSize(400, 50)  # Fixed size looks much better
+            btn.setStyleSheet("font-size: 16px; border-radius: 8px;")
+            btn.clicked.connect(self.check_answer)
+            self.answer_layout.addWidget(btn, alignment=Qt.AlignCenter)
+            self.answer_buttons.append(btn)
+        self.layout.addLayout(self.answer_layout)
+
+        self.score_label = QLabel("Score: 0")
+        self.score_label.setAlignment(Qt.AlignCenter)
+        self.score_label.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 30px; color: #89b4fa;")
+        self.layout.addWidget(self.score_label)
+
+        self.layout.addStretch()
+
+        back_btn = QPushButton("← Back to Menu")
+        back_btn.setFixedWidth(200)
+        back_btn.clicked.connect(self.back_requested.emit)
+        self.layout.addWidget(back_btn, alignment=Qt.AlignCenter)
+
+    def start(self):
+        try:
+            self.questions = fetch_questions(amount=5)
+        except Exception as e:
+            QMessageBox.critical(self, "API Error", str(e))
+            return
+        self.current_index = 0
+        self.score = 0
+        self.show_question()
+
+    def show_question(self):
+        if self.current_index >= len(self.questions):
+            QMessageBox.information(self, "Finished", f"Final score: {self.score}/{len(self.questions)}")
+            self.back_requested.emit()
+            return
+
+        q = self.questions[self.current_index]
+        self.question_label.setText(f"Q{self.current_index + 1}: {q['question']}")
+
+        answers = [q["correct_answer"]] + q["incorrect_answers"]
+        random.shuffle(answers)
+
+        for btn, ans in zip(self.answer_buttons, answers):
+            btn.setText(ans)
+            btn.setEnabled(True)
+            btn.setStyleSheet("")  # Reset styles
+            btn.setProperty("is_correct", ans == q["correct_answer"])
+
+    def check_answer(self):
+        btn = self.sender()
+        is_correct = btn.property("is_correct")
+
+        # Visual Feedback
+        if is_correct:
+            self.score += 1
+            btn.setStyleSheet("background-color: #a6e3a1; color: #11111b; font-weight: bold;")
+        else:
+            btn.setStyleSheet("background-color: #f38ba8; color: #11111b; font-weight: bold;")
+            # Highlight the correct one
+            for b in self.answer_buttons:
+                if b.property("is_correct"):
+                    b.setStyleSheet("background-color: #a6e3a1; color: #11111b; font-weight: bold;")
+
+        self.score_label.setText(f"Score: {self.score}")
+
+        for b in self.answer_buttons:
+            b.setEnabled(False)
+
+        self.current_index += 1
+        QTimer.singleShot(1200, self.show_question)  # Slightly longer delay to see colors
+
+
+# ======================================================================
+# GAMES: POKEMON (formerly games/pokemon_game.py)
+# ======================================================================
+class PokemonGame(BaseGame):
+    def __init__(self):
+        super().__init__()
+        self.correct_name = ""
+        self.score = 0
+        self.rounds = 0
+        self.max_rounds = 5
+        self.current_pixmap = None  # Store the colored image here
+
+        self.layout.addStretch()
+
+        self.title_label = QLabel("Who's That Pokémon?")
+        self.title_label.setStyleSheet("font-size: 28px; font-weight: bold; color: #89b4fa; margin-bottom: 10px;")
+        self.layout.addWidget(self.title_label, alignment=Qt.AlignCenter)
+
+        # Image Display
+        self.image_label = QLabel()
+        self.image_label.setFixedSize(300, 300)
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setStyleSheet("background-color: #313244; border-radius: 15px;")
+        self.layout.addWidget(self.image_label, alignment=Qt.AlignCenter)
+
+        self.status_label = QLabel("Score: 0")
+        self.status_label.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 15px;")
+        self.layout.addWidget(self.status_label, alignment=Qt.AlignCenter)
+
+        # Answer Buttons (2x2 Grid)
+        self.btn_layout = QHBoxLayout()
+        self.btn_layout.setSpacing(10)
+        self.answer_buttons = []
+
+        for _ in range(4):
+            btn = QPushButton()
+            btn.setFixedSize(150, 50)
+            btn.clicked.connect(self.check_answer)
+            self.answer_buttons.append(btn)
+
+        col1 = QVBoxLayout()
+        col2 = QVBoxLayout()
+        col1.addWidget(self.answer_buttons[0])
+        col1.addWidget(self.answer_buttons[1])
+        col2.addWidget(self.answer_buttons[2])
+        col2.addWidget(self.answer_buttons[3])
+        self.btn_layout.addLayout(col1)
+        self.btn_layout.addLayout(col2)
+
+        self.layout.addLayout(self.btn_layout)
+        self.layout.addStretch()
+
+        back_btn = QPushButton("← Back to Menu")
+        back_btn.setFixedWidth(200)
+        back_btn.clicked.connect(self.back_requested.emit)
+        self.layout.addWidget(back_btn, alignment=Qt.AlignCenter)
+
+    def start(self):
+        self.score = 0
+        self.rounds = 0
+        self.next_round()
+
+    def next_round(self):
+        if self.rounds >= self.max_rounds:
+            QMessageBox.information(self, "Game Over", f"Final Score: {self.score}/{self.max_rounds}")
+            self.back_requested.emit()
+            return
+
+        self.status_label.setText(f"Score: {self.score} | Round {self.rounds + 1}/{self.max_rounds}")
+        self.title_label.setText("Who's That Pokémon?")
+
+        try:
+            # Fetch Data
+            self.correct_name, img_data = fetch_random_pokemon()
+            wrong_names = fetch_random_names(3)
+        except Exception as e:
+            QMessageBox.critical(self, "API Error", str(e))
+            self.back_requested.emit()
+            return
+
+        # Process Image
+        pixmap = QPixmap()
+        pixmap.loadFromData(img_data)
+        pixmap = pixmap.scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+        # Save the colored image to memory
+        self.current_pixmap = pixmap
+
+        # Create Silhouette (Black out the image)
+        silhouette = QPixmap(pixmap.size())
+        silhouette.fill(Qt.transparent)
+        painter = QPainter(silhouette)
+        painter.drawPixmap(0, 0, pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        painter.fillRect(silhouette.rect(), QColor("#11111b"))  # Dark silhouette
+        painter.end()
+
+        self.image_label.setPixmap(silhouette)
+
+        # Setup Buttons
+        answers = [self.correct_name] + wrong_names
+        random.shuffle(answers)
+
+        for btn, ans in zip(self.answer_buttons, answers):
+            btn.setText(ans)
+            btn.setEnabled(True)
+            btn.setStyleSheet("")  # Reset colors
+            btn.setProperty("is_correct", ans == self.correct_name)
+
+    def check_answer(self):
+        btn = self.sender()
+        is_correct = btn.property("is_correct")
+
+        # Reveal the colored image
+        if self.current_pixmap:
+            self.image_label.setPixmap(self.current_pixmap)
+
+        self.title_label.setText(f"It's {self.correct_name}!")
+
+        if is_correct:
+            self.score += 1
+            btn.setStyleSheet("background-color: #a6e3a1; color: #11111b; font-weight: bold;")
+        else:
+            btn.setStyleSheet("background-color: #f38ba8; color: #11111b; font-weight: bold;")
+            # Highlight the correct button
+            for b in self.answer_buttons:
+                if b.property("is_correct"):
+                    b.setStyleSheet("background-color: #a6e3a1; color: #11111b; font-weight: bold;")
+
+        for b in self.answer_buttons:
+            b.setEnabled(False)
+
+        self.rounds += 1
+        QTimer.singleShot(2500, self.next_round)  # 2.5 seconds so players can look at the revealed Pokémon
+
+
+# ======================================================================
+# GAMES: MEMORY MATCH (formerly games/memory_game.py)
+# ======================================================================
+class MemoryGame(BaseGame):
+    def __init__(self):
+        super().__init__()
+        self.moves = 0
+        self.pairs_found = 0
+        self.first_card = None
+        self.second_card = None
+        self.is_checking = False
+
+        self.layout.addStretch()
+
+        self.title_label = QLabel("🦸 Cartoon Memory Match")
+        self.title_label.setStyleSheet("font-size: 28px; font-weight: bold; color: #89b4fa; margin-bottom: 10px;")
+        self.layout.addWidget(self.title_label, alignment=Qt.AlignCenter)
+
+        self.status_label = QLabel("Loading images...")
+        self.status_label.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 15px;")
+        self.layout.addWidget(self.status_label, alignment=Qt.AlignCenter)
+
+        # The 4x4 Grid
+        self.grid_widget = QWidget()
+        self.grid_layout = QGridLayout(self.grid_widget)
+        self.grid_layout.setSpacing(10)
+        self.layout.addWidget(self.grid_widget, alignment=Qt.AlignCenter)
+
+        self.buttons = []
+        self.default_style = """
+            QPushButton {
+                background-color: #313244;
+                border: 2px solid #45475a;
+                border-radius: 10px;
+                font-size: 32px;
+            }
+            QPushButton:hover {
+                border-color: #89b4fa;
+            }
+        """
+
+        for row in range(4):
+            for col in range(4):
+                btn = QPushButton()
+                btn.setFixedSize(100, 100)
+                btn.setStyleSheet(self.default_style)
+                btn.setText("❓")
+                btn.clicked.connect(self.on_card_clicked)
+                self.grid_layout.addWidget(btn, row, col)
+                self.buttons.append(btn)
+
+        self.layout.addStretch()
+
+        back_btn = QPushButton("← Back to Menu")
+        back_btn.setFixedWidth(200)
+        back_btn.clicked.connect(self.back_requested.emit)
+        self.layout.addWidget(back_btn, alignment=Qt.AlignCenter)
+
+    def start(self):
+        self.moves = 0
+        self.pairs_found = 0
+        self.first_card = None
+        self.second_card = None
+        self.is_checking = False
+
+        # Reset buttons visually while loading
+        for btn in self.buttons:
+            btn.setText("❓")
+            btn.setIcon(QIcon())
+            btn.setStyleSheet(self.default_style)
+            btn.setProperty("is_flipped", False)
+
+        try:
+            image_urls = fetch_cartoon_images(8)
+            all_urls = image_urls + image_urls
+
+            self.image_cache = {}
+            for url in image_urls:
+                # Using a User-Agent helps prevent image hosts from blocking the download
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                response = requests.get(url, headers=headers, timeout=10)
+                response.raise_for_status()
+
+                pixmap = QPixmap()
+                pixmap.loadFromData(response.content)
+
+                # Ensure the image actually loaded before caching it
+                if not pixmap.isNull():
+                    self.image_cache[url] = QIcon(
+                        pixmap.scaled(90, 90, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+                else:
+                    raise ValueError("Image data was empty or corrupted.")
+
+            random.shuffle(all_urls)
+
+            for btn, url in zip(self.buttons, all_urls):
+                btn.setProperty("image_url", url)
+                btn.setProperty("is_flipped", False)
+                btn.setText("❓")
+                btn.setIcon(QIcon())
+                btn.setStyleSheet(self.default_style)
+                btn.setEnabled(True)
+
+            self.update_status()
+
+        except Exception as e:
+            QMessageBox.critical(self, "API Error", f"Could not load cartoon images:\n{str(e)}")
+            self.back_requested.emit()
+
+    def update_status(self):
+        self.status_label.setText(f"Moves: {self.moves} | Pairs Found: {self.pairs_found}/8")
+
+    def on_card_clicked(self):
+        if self.is_checking:
+            return
+
+        btn = self.sender()
+
+        if btn.property("is_flipped"):
+            return
+
+        self.flip_card(btn, show_image=True)
+
+        if not self.first_card:
+            self.first_card = btn
+        elif not self.second_card:
+            self.second_card = btn
+            self.moves += 1
+            self.update_status()
+            self.check_match()
+
+    def flip_card(self, btn, show_image):
+        if show_image:
+            url = btn.property("image_url")
+            btn.setIcon(self.image_cache[url])
+            btn.setIconSize(QSize(90, 90))
+            btn.setText("")
+            btn.setProperty("is_flipped", True)
+        else:
+            btn.setIcon(QIcon())
+            btn.setText("❓")
+            btn.setProperty("is_flipped", False)
+            btn.setStyleSheet(self.default_style)
+
+    def check_match(self):
+        self.is_checking = True
+        url1 = self.first_card.property("image_url")
+        url2 = self.second_card.property("image_url")
+
+        if url1 == url2:
+            match_style = """
+                QPushButton {
+                    background-color: #313244;
+                    border: 3px solid #a6e3a1;
+                    border-radius: 10px;
+                }
+            """
+            self.first_card.setStyleSheet(match_style)
+            self.second_card.setStyleSheet(match_style)
+
+            self.pairs_found += 1
+            self.update_status()
+            self.reset_selection()
+            self.check_win()
+        else:
+            QTimer.singleShot(1000, self.reset_flipped_cards)
+
+    def reset_flipped_cards(self):
+        self.flip_card(self.first_card, show_image=False)
+        self.flip_card(self.second_card, show_image=False)
+        self.reset_selection()
+
+    def reset_selection(self):
+        self.first_card = None
+        self.second_card = None
+        self.is_checking = False
+
+    def check_win(self):
+        if self.pairs_found == 8:
+            QMessageBox.information(self, "You Win!", f"Congratulations!\nYou found all pairs in {self.moves} moves!")
+            self.back_requested.emit()
+
+
+# ======================================================================
+# GAMES: GAME HUB (formerly ui/main_window.py -> MainWindow)
+# Renamed to GameHubWindow to avoid clashing with the dashboard's MainWindow.
+# ======================================================================
+class GameHubWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Game Hub – PySide6 + APIs")
+        self.resize(800, 650)
+        self.setObjectName("mainWindow")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+
+        self.stack = QStackedWidget()
+        self.setCentralWidget(self.stack)
+
+        # ----- Menu screen -----
+        self.menu_widget = QWidget()
+        self.menu_widget.setObjectName("menuWidget")
+        menu_layout = QVBoxLayout(self.menu_widget)
+
+        # 1. Top stretch to push everything down
+        menu_layout.addStretch()
+
+        # Gaming Icon
+        icon_label = QLabel("🎮")
+        icon_label.setStyleSheet("font-size: 80px; margin-bottom: 10px;")
+        menu_layout.addWidget(icon_label, alignment=Qt.AlignCenter)
+
+        title = QLabel("Choose a Game")
+        title.setStyleSheet("font-size: 32px; font-weight: bold; margin-bottom: 30px; color: #89b4fa;")
+        menu_layout.addWidget(title, alignment=Qt.AlignCenter)
+
+        games = [
+            ("🎯 Trivia Quiz", TriviaGame),
+            ("⚡ Who's That Pokémon?", PokemonGame),
+            ("🦸 Memory Match", MemoryGame),
+        ]
+
+        for name, game_class in games:
+            btn = QPushButton(name)
+            btn.setObjectName("menuButton")
+            btn.setFixedWidth(350)
+            btn.clicked.connect(lambda checked, gc=game_class: self.launch_game(gc))
+            menu_layout.addWidget(btn, alignment=Qt.AlignCenter)
+
+        # 2. Bottom stretch to push everything up
+        menu_layout.addStretch()
+
+        self.stack.addWidget(self.menu_widget)
+
+    def launch_game(self, game_class):
+        game = game_class()
+        game.back_requested.connect(self.show_menu)
+        self.stack.addWidget(game)
+        self.stack.setCurrentWidget(game)
+        game.start()
+
+    def show_menu(self):
+        current = self.stack.currentWidget()
+        if current is not self.menu_widget:
+            self.stack.removeWidget(current)
+            current.deleteLater()
+        self.stack.setCurrentWidget(self.menu_widget)
+
+
+# ======================================================================
+# DASHBOARD
+# ======================================================================
 class ClickableFrame(QFrame):
     clicked = Signal()
     def mousePressEvent(self, event):
@@ -195,7 +767,7 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.build_search_page())    # Index 1
         self.stacked_widget.addWidget(self.build_library_page())   # Index 2
         self.stacked_widget.addWidget(self.build_video_page())     # Index 3
-        self.stacked_widget.addWidget(self.build_games_page())     # Index 4 (Custom Integration)
+        self.stacked_widget.addWidget(self.build_games_page())     # Index 4 (Games)
 
         # --- ASSEMBLE LAYOUT ---
         outer_layout.addWidget(header)
@@ -211,7 +783,7 @@ class MainWindow(QMainWindow):
         self.set_username(self.username)
 
     def build_games_page(self):
-        """Integrates the standalone Game Hub while preventing window resizing."""
+        """Embeds the Game Hub (defined above in this file) while preventing window resizing."""
         wrapper = QWidget()
         layout = QVBoxLayout(wrapper)
         layout.setContentsMargins(0, 0, 0, 0)
