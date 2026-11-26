@@ -1,6 +1,5 @@
 # dashboard.py
 import sys
-from dataclasses import dataclass
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QScrollArea, QFrame,
@@ -8,16 +7,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QPointF
 from PySide6.QtGui import QPainter, QColor, QPolygonF, QBrush, QPixmap
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from theme import DARK_THEME
-from components import TopNavBar
-
-@dataclass
-class TrackData:
-    title: str
-    album: str
-    length: str
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -26,10 +17,6 @@ class MainWindow(QMainWindow):
         self.resize(1100, 800)
         self.setStyleSheet(DARK_THEME)
 
-        self.media_player = QMediaPlayer()
-        self.audio_output = QAudioOutput()
-        self.media_player.setAudioOutput(self.audio_output)
-
         main_widget = QWidget()
         main_widget.setObjectName("MainContainer")
         self.setCentralWidget(main_widget)
@@ -37,14 +24,14 @@ class MainWindow(QMainWindow):
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
 
-        # --- 1. TOP HEADER (Logo, Segmented Control, Search) ---
+        # --- 1. TOP HEADER ---
         header = QWidget()
+        header.setObjectName("TopHeader")
         header.setFixedHeight(64)
-        header.setStyleSheet("background-color: #050505; border-bottom: 1px solid #1a1a1a;")
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(30, 0, 30, 0)
         
-        # Logo
+        # Left: Logo
         logo_box = QHBoxLayout()
         logo_icon = QLabel("▶")
         logo_icon.setStyleSheet("background: #0055ff; color: white; border-radius: 4px; padding: 2px 6px; font-size: 12px;")
@@ -53,20 +40,24 @@ class MainWindow(QMainWindow):
         logo_box.addWidget(logo_icon)
         logo_box.addWidget(logo_text)
         
-        # Segmented Control
+        # Center: Segmented Control 
+        # Using fixed sizes per button so it NEVER squishes or relies on font metrics
         seg_widget = QWidget()
         seg_widget.setObjectName("SegmentedControl")
-        seg_widget.setFixedSize(200, 30)
+        seg_widget.setFixedSize(240, 34) 
+        
         seg_layout = QHBoxLayout(seg_widget)
-        seg_layout.setContentsMargins(2, 2, 2, 2)
-        seg_layout.setSpacing(2)
-        for i, (icon, text) in enumerate([("🎵", "Music"), ("🎬", "Video"), ("🎮", "Games")]):
-            btn = QPushButton(f"{icon} {text}")
+        seg_layout.setContentsMargins(4, 4, 4, 4)
+        seg_layout.setSpacing(0)
+        
+        for i, text in enumerate(["Music", "Video", "Games"]):
+            btn = QPushButton(text)
             btn.setObjectName("SegBtnActive" if i == 0 else "SegBtn")
             btn.setCursor(Qt.PointingHandCursor)
+            btn.setFixedWidth(77) # Perfectly divides the 240px width
             seg_layout.addWidget(btn)
 
-        # Right Side (Search + Profile)
+        # Right: Search + Profile
         search = QLineEdit()
         search.setObjectName("SearchBar")
         search.setPlaceholderText("🔍 Search catalog...")
@@ -78,34 +69,37 @@ class MainWindow(QMainWindow):
         profile.setStyleSheet("background: white; color: black; border-radius: 15px; font-weight: bold; font-size: 12px;")
 
         h_layout.addLayout(logo_box)
-        h_layout.addSpacing(50)
+        h_layout.addStretch()
         h_layout.addWidget(seg_widget)
         h_layout.addStretch()
         h_layout.addWidget(search)
         h_layout.addWidget(profile)
 
-        # --- 2. TOP NAVBAR (Home, Search, Library) ---
-        self.navbar = TopNavBar()
-        self.navbar.page_changed.connect(self.switch_page)
+        # --- 2. NAVBAR ---
+        navbar = QWidget()
+        navbar.setObjectName("TopNavBar")
+        navbar.setFixedHeight(56)
+        nav_layout = QHBoxLayout(navbar)
+        nav_layout.setContentsMargins(30, 0, 30, 0)
+        nav_layout.setSpacing(15)
+        
+        for text, active in [("🏠  Home", True), ("🔍  Search", False), ("📚  Your Library", False)]:
+            btn = QPushButton(text)
+            btn.setObjectName("NavTopBtnActive" if active else "NavTopBtn")
+            btn.setCursor(Qt.PointingHandCursor)
+            nav_layout.addWidget(btn)
+        nav_layout.addStretch()
 
         # --- 3. STACKED WIDGET ---
         self.stacked_widget = QStackedWidget()
-        self.stacked_widget.addWidget(self.build_home_page())     # Index 0
-        self.stacked_widget.addWidget(self.build_search_page())   # Index 1
-        self.stacked_widget.addWidget(self.build_library_page())  # Index 2
+        self.stacked_widget.addWidget(self.build_home_page())
 
-        # Add everything to the main outer layout
+        # --- 4. ASSEMBLE ---
         outer_layout.addWidget(header)
-        outer_layout.addWidget(self.navbar)
+        outer_layout.addWidget(navbar)
         outer_layout.addWidget(self.stacked_widget, 1)
         outer_layout.addWidget(self.create_player_bar())
 
-    def switch_page(self, page_name):
-        mapping = {"home": 0, "search": 1, "your library": 2}
-        if page_name in mapping:
-            self.stacked_widget.setCurrentIndex(mapping[page_name])
-
-    # Helper for the circular play button
     def _create_play_icon(self, size=40, color="#ffffff", bg_color="#0055ff"):
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.transparent)
@@ -115,11 +109,7 @@ class MainWindow(QMainWindow):
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(0, 0, size, size)
         painter.setBrush(QBrush(QColor(color)))
-        triangle = QPolygonF([
-            QPointF(size * 0.38, size * 0.28),
-            QPointF(size * 0.38, size * 0.72),
-            QPointF(size * 0.72, size * 0.5)
-        ])
+        triangle = QPolygonF([QPointF(size * 0.38, size * 0.28), QPointF(size * 0.38, size * 0.72), QPointF(size * 0.72, size * 0.5)])
         painter.drawPolygon(triangle)
         painter.end()
         lbl = QLabel()
@@ -127,9 +117,6 @@ class MainWindow(QMainWindow):
         lbl.setFixedSize(size, size)
         return lbl
 
-    # ==========================================
-    # PAGE 1: HOME
-    # ==========================================
     def build_home_page(self):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -151,9 +138,7 @@ class MainWindow(QMainWindow):
 
         h_art = QLabel()
         h_art.setFixedSize(180, 180)
-        h_art.setStyleSheet(
-            "background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
-            "stop:0 #4a3a2a, stop:1 #1a1a1a); border-radius: 8px;")
+        h_art.setStyleSheet("background: #333; border-radius: 8px;")
 
         h_text = QVBoxLayout()
         h_text.setAlignment(Qt.AlignVCenter)
@@ -169,8 +154,7 @@ class MainWindow(QMainWindow):
         h_btn = QPushButton("▶ Play Album")
         h_btn.setFixedSize(110, 32)
         h_btn.setStyleSheet("background-color: #0055ff; color: white; border-radius: 16px; font-weight: bold; font-size: 11px;")
-        h_btn.setCursor(Qt.PointingHandCursor)
-
+        
         h_text.addWidget(h_tag)
         h_text.addWidget(h_title)
         h_text.addWidget(h_desc)
@@ -195,30 +179,32 @@ class MainWindow(QMainWindow):
         jb_layout = QHBoxLayout()
         jb_layout.setSpacing(15)
         recents = [
-            ("Nils Frahm Radio", "Artist Mix", "#333"),
-            ("Deep Focus Playlist", "42 tracks · Ambient", "#111"),
-            ("All Melody", "Nils Frahm", "#222"),
-            ("remember", "Ólafur Arnalds", "#1a1a1a"),
-            ("Eusa", "Hania Rani", "#333"),
-            ("Singularity", "Jon Hopkins", "#111"),
+            ("Nils Frahm Radio", "Artist Mix"),
+            ("Deep Focus Playlist", "42 tracks · Ambient"),
+            ("All Melody", "Nils Frahm"),
+            ("remember", "Ólafur Arnalds"),
+            ("Eusa", "Hania Rani"),
+            ("Singularity", "Jon Hopkins"),
         ]
-        for title, sub, color in recents:
+        for title, sub in recents:
             card = QFrame()
-            card.setFixedSize(150, 185)
+            card.setFixedSize(150, 195) # Locked size
+            card.setStyleSheet("background-color: #181818; border-radius: 6px; border: 1px solid #222;") 
+            
             c_layout = QVBoxLayout(card)
-            c_layout.setContentsMargins(0, 0, 0, 0)
+            c_layout.setContentsMargins(10, 10, 10, 10)
             c_layout.setSpacing(5)
             
             art = QLabel()
-            art.setFixedSize(150, 150)
-            art.setStyleSheet(f"background-color: {color}; border-radius: 6px;")
+            art.setFixedSize(130, 130)
+            art.setStyleSheet("background-color: #333; border-radius: 6px;")
             
             t = QLabel(title)
             t.setStyleSheet("color: white; font-size: 12px; font-weight: bold;")
             s = QLabel(sub)
             s.setStyleSheet("color: #888; font-size: 10px;")
             
-            c_layout.addWidget(art)
+            c_layout.addWidget(art, alignment=Qt.AlignCenter)
             c_layout.addWidget(t)
             c_layout.addWidget(s)
             jb_layout.addWidget(card)
@@ -241,7 +227,7 @@ class MainWindow(QMainWindow):
         for title, sub in mixes:
             card = QFrame()
             card.setObjectName("MixCard")
-            card.setFixedHeight(120)
+            card.setFixedHeight(130) # LOCKED HEIGHT SO IT CANNOT COLLAPSE
             c_layout = QHBoxLayout(card)
             c_layout.setContentsMargins(15, 15, 15, 15)
 
@@ -266,393 +252,18 @@ class MainWindow(QMainWindow):
             mf_layout.addWidget(card, 1)
         layout.addLayout(mf_layout)
 
-        # --- CURATED MOODS ---
-        cm_title = QLabel("Curated Moods")
-        cm_title.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
-        layout.addWidget(cm_title)
-
-        cm_grid = QGridLayout()
-        cm_grid.setSpacing(15)
-        moods = [
-            ("Cinematic", "Widescreen strings & synth swells", "#0f172a"),
-            ("Study Session", "Minimal beats without lyrics", "#1e1b4b"),
-            ("Sleep", "Slow harmonic drones & rain", "#450a0a"),
-            ("Sunday Morning", "Warm acoustic piano & sunlight", "#1c1917"),
-        ]
-        for i, (title, sub, color) in enumerate(moods):
-            card = QFrame()
-            card.setObjectName("MoodCard")
-            card.setFixedHeight(90)
-            card.setStyleSheet(f"background-color: {color};")
-            c_layout = QVBoxLayout(card)
-            c_layout.setContentsMargins(15, 15, 15, 15)
-            t = QLabel(title)
-            t.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
-            s = QLabel(sub)
-            s.setStyleSheet("color: #aaa; font-size: 9px;")
-            c_layout.addWidget(t)
-            c_layout.addStretch()
-            c_layout.addWidget(s)
-            cm_grid.addWidget(card, i // 4, i % 4)
-        layout.addLayout(cm_grid)
-
-        # --- NEW RELEASES ---
-        nr_title = QLabel("New Releases")
-        nr_title.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
-        layout.addWidget(nr_title)
-
-        nr_layout = QHBoxLayout()
-        nr_layout.setSpacing(15)
-        releases = [("Some Kind of Peace", "Ólafur Arnalds"), ("Ghosts", "Hania Rani"), ("Day", "Nils Frahm"), ("Ritual", "Jon Hopkins")]
-        for title, artist in releases:
-            card = QFrame()
-            card.setFixedSize(140, 180)
-            c_layout = QVBoxLayout(card)
-            c_layout.setContentsMargins(0, 0, 0, 0)
-            c_layout.setSpacing(5)
-            
-            art = QLabel()
-            art.setFixedSize(140, 140)
-            art.setStyleSheet("background-color: #222; border-radius: 6px;")
-            t = QLabel(title)
-            t.setStyleSheet("color: white; font-size: 11px; font-weight: bold;")
-            a = QLabel(artist)
-            a.setStyleSheet("color: #888; font-size: 10px;")
-            
-            c_layout.addWidget(art)
-            c_layout.addWidget(t)
-            c_layout.addWidget(a)
-            nr_layout.addWidget(card)
-        nr_layout.addStretch()
-        layout.addLayout(nr_layout)
-
         layout.addStretch()
         scroll.setWidget(content)
         return scroll
 
-    # ==========================================
-    # PAGE 2: SEARCH
-    # ==========================================
-    def build_search_page(self):
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(30, 20, 30, 20)
-        layout.setSpacing(20)
-
-        # Search bar
-        search_wrapper = QHBoxLayout()
-        search_wrapper.addStretch()
-        big_search = QLineEdit()
-        big_search.setObjectName("SearchBar")
-        big_search.setText("Nils Frahm")
-        big_search.setFixedSize(400, 38)
-        big_search.setStyleSheet("font-size: 12px; padding-left: 15px; border-radius: 6px; background-color: #1a1a1a; border: 1px solid #333;")
-        clear_btn = QPushButton("✕")
-        clear_btn.setStyleSheet("background: transparent; color: #888; border: none; font-size: 12px;")
-        sbl = QHBoxLayout(big_search)
-        sbl.setContentsMargins(0, 0, 15, 0)
-        sbl.addStretch()
-        sbl.addWidget(clear_btn)
-        search_wrapper.addWidget(big_search)
-        search_wrapper.addStretch()
-
-        # Filter pills
-        filter_wrapper = QHBoxLayout()
-        filter_wrapper.addStretch()
-        for i, f in enumerate(["ALL", "ARTISTS", "SONGS"]):
-            btn = QPushButton(f)
-            btn.setObjectName("FilterBtnActive" if i == 0 else "FilterBtn")
-            btn.setCursor(Qt.PointingHandCursor)
-            filter_wrapper.addWidget(btn)
-        filter_wrapper.addStretch()
-
-        layout.addLayout(search_wrapper)
-        layout.addSpacing(10)
-        layout.addLayout(filter_wrapper)
-        layout.addSpacing(15)
-
-        # Artist Card
-        artist_card = QFrame()
-        artist_card.setObjectName("TableContainer")
-        artist_card.setFixedHeight(180)
-        ac_layout = QHBoxLayout(artist_card)
-        ac_layout.setContentsMargins(20, 20, 20, 20)
-        ac_layout.setSpacing(25)
-
-        art_img = QLabel()
-        art_img.setFixedSize(140, 140)
-        art_img.setStyleSheet("background-color: #333; border-radius: 6px;")
-
-        info_layout = QVBoxLayout()
-        info_layout.setAlignment(Qt.AlignVCenter)
-        artist_tag = QLabel("ARTIST")
-        artist_tag.setStyleSheet("color: #ff5555; font-size: 9px; font-weight: bold;")
-        artist_name = QLabel("Nils Frahm")
-        artist_name.setStyleSheet("color: white; font-size: 26px; font-weight: bold;")
-        artist_stats = QLabel("1.2M Monthly Listeners")
-        artist_stats.setObjectName("ArtistStat")
-        info_layout.addWidget(artist_tag)
-        info_layout.addWidget(artist_name)
-        info_layout.addWidget(artist_stats)
-
-        play_btn = QPushButton("▶")
-        play_btn.setObjectName("MainPlayBtn")
-        play_btn.setFixedSize(45, 45)
-
-        tracks_layout = QVBoxLayout()
-        tracks_layout.setSpacing(12)
-        for i, (t, a, dur) in enumerate([("Says", "Spaces", "08:18"), ("All Melody", "All Melody", "09:30"), ("Ambre", "Wintermusik", "03:48")]):
-            t_row = QHBoxLayout()
-            t_num = QLabel("▶" if i == 0 else str(i + 1))
-            t_num.setObjectName("TrackRowNum")
-            t_name = QLabel(t)
-            t_name.setStyleSheet("color: white; font-size: 12px;")
-            t_album = QLabel(a)
-            t_album.setStyleSheet("color: #888; font-size: 11px;")
-            t_time = QLabel(dur)
-            t_time.setStyleSheet("color: #888; font-size: 11px;")
-            t_heart = QLabel("♡" if i != 1 else "♥")
-            t_heart.setStyleSheet("color: #ff5555;" if i == 1 else "color: #888;")
-
-            t_row.addWidget(t_num)
-            t_row.addWidget(t_name, 1)
-            t_row.addWidget(t_album, 1)
-            t_row.addWidget(t_time)
-            t_row.addWidget(t_heart)
-            tracks_layout.addLayout(t_row)
-
-        ac_layout.addWidget(art_img)
-        ac_layout.addLayout(info_layout, 1)
-        ac_layout.addWidget(play_btn)
-        ac_layout.addLayout(tracks_layout, 2)
-        layout.addWidget(artist_card)
-
-        # Explorations
-        explore_lbl = QLabel("EXPLORATIONS")
-        explore_lbl.setObjectName("SectionTitle")
-        layout.addWidget(explore_lbl)
-
-        grid_layout = QGridLayout()
-        grid_layout.setSpacing(15)
-        for i, (title, sub) in enumerate([("Ambient", "Deep focus"), ("Classical", "Piano & strings"), ("Lo-Fi", "Quiet beats"), ("Field Notes", "Atmospheres")]):
-            card = QFrame()
-            card.setObjectName("TableContainer")
-            card.setFixedHeight(90)
-            c_layout = QVBoxLayout(card)
-            c_layout.setContentsMargins(15, 15, 15, 15)
-            c_title = QLabel(title)
-            c_title.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
-            c_sub = QLabel(sub)
-            c_sub.setStyleSheet("color: #888; font-size: 10px;")
-            c_layout.addWidget(c_title)
-            c_layout.addStretch()
-            c_layout.addWidget(c_sub)
-            grid_layout.addWidget(card, i // 4, i % 4)
-
-        layout.addLayout(grid_layout)
-        layout.addStretch()
-        return content
-
-    # ==========================================
-    # PAGE 3: LIBRARY
-    # ==========================================
-    def build_library_page(self):
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("background: transparent; border: none;")
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(30, 20, 30, 20)
-        layout.setSpacing(20)
-
-        # Header
-        title_row = QHBoxLayout()
-        title = QLabel("Your Library")
-        title.setStyleSheet("color: white; font-size: 22px; font-weight: bold;")
-        title_row.addWidget(title)
-        title_row.addStretch()
-        for i, f in enumerate(["All", "Playlists", "Artists", "Albums", "Podcasts"]):
-            btn = QPushButton(f)
-            btn.setObjectName("FilterBtnActive" if i == 0 else "FilterBtn")
-            btn.setCursor(Qt.PointingHandCursor)
-            title_row.addWidget(btn)
-        layout.addLayout(title_row)
-
-        # Liked Songs Banner
-        liked_banner = QFrame()
-        liked_banner.setObjectName("LikedBanner")
-        liked_banner.setFixedHeight(120)
-        lb_layout = QHBoxLayout(liked_banner)
-        lb_layout.setContentsMargins(20, 20, 20, 20)
-        
-        heart_box = QFrame()
-        heart_box.setFixedSize(80, 80)
-        heart_box.setStyleSheet("background-color: white; border-radius: 8px;")
-        hb_layout = QVBoxLayout(heart_box)
-        hb_layout.setAlignment(Qt.AlignCenter)
-        heart_icon = QLabel("♥")
-        heart_icon.setStyleSheet("color: #0055ff; font-size: 36px; background: transparent;")
-        hb_layout.addWidget(heart_icon)
-
-        lb_text = QVBoxLayout()
-        lb_text.setAlignment(Qt.AlignVCenter)
-        lb_tag = QLabel("FAVORITES")
-        lb_tag.setStyleSheet("color: #ccc; font-size: 9px; font-weight: bold; background: transparent;")
-        lb_title = QLabel("Liked Songs")
-        lb_title.setStyleSheet("color: white; font-size: 22px; font-weight: bold; background: transparent;")
-        lb_sub = QLabel("128 hearted tracks · Includes All Melody by Nils Frahm")
-        lb_sub.setStyleSheet("color: #eee; font-size: 10px; background: transparent;")
-        lb_text.addWidget(lb_tag)
-        lb_text.addWidget(lb_title)
-        lb_text.addWidget(lb_sub)
-        
-        lb_play = self._create_play_icon(40, bg_color="#ffffff", color="#0055ff")
-        
-        lb_layout.addWidget(heart_box)
-        lb_layout.addSpacing(15)
-        lb_layout.addLayout(lb_text, 1)
-        lb_layout.addWidget(lb_play)
-        layout.addWidget(liked_banner)
-
-        # Recently Played
-        rp_title = QLabel("Recently Played")
-        rp_title.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
-        layout.addWidget(rp_title)
-
-        rp_layout = QHBoxLayout()
-        rp_layout.setSpacing(15)
-        recents = [("All Melody", "Nils Frahm", "#222"), ("remember", "Ólafur Arnalds", "#fff"), ("On Giacometti", "Hania Rani", "#333"), ("Singularity", "Jon Hopkins", "#111")]
-        for title, sub, color in recents:
-            card = QFrame()
-            card.setObjectName("RecentCard")
-            card.setFixedSize(200, 60)
-            c_layout = QHBoxLayout(card)
-            c_layout.setContentsMargins(5, 5, 10, 5)
-            c_layout.setSpacing(10)
-            
-            art = QLabel()
-            art.setFixedSize(50, 50)
-            art.setStyleSheet(f"background-color: {color}; border-radius: 4px;")
-            
-            info = QVBoxLayout()
-            info.setSpacing(2)
-            info.setAlignment(Qt.AlignVCenter)
-            t = QLabel(title)
-            t.setStyleSheet("color: white; font-size: 11px; font-weight: bold;")
-            s = QLabel(sub)
-            s.setStyleSheet("color: #888; font-size: 10px;")
-            info.addWidget(t)
-            info.addWidget(s)
-            
-            c_layout.addWidget(art)
-            c_layout.addLayout(info, 1)
-            rp_layout.addWidget(card)
-        rp_layout.addStretch()
-        layout.addLayout(rp_layout)
-
-        # Your Playlists (Table)
-        yp_header = QHBoxLayout()
-        yp_title = QLabel("Your Playlists")
-        yp_title.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
-        yp_count = QLabel("4 playlists")
-        yp_count.setStyleSheet("color: #888; font-size: 10px;")
-        yp_header.addWidget(yp_title)
-        yp_header.addStretch()
-        yp_header.addWidget(yp_count)
-        layout.addLayout(yp_header)
-
-        table_container = QFrame()
-        table_container.setObjectName("TableContainer")
-        table_layout = QVBoxLayout(table_container)
-        table_layout.setContentsMargins(15, 10, 15, 10)
-        table_layout.setSpacing(0)
-
-        # Headers
-        th = QHBoxLayout()
-        for text, stretch in [("TITLE", 1), ("SONGS", 0), ("DATE CREATED", 0), ("", 0)]:
-            lbl = QLabel(text)
-            lbl.setStyleSheet("color: #666; font-size: 9px; font-weight: bold;")
-            if stretch:
-                th.addWidget(lbl, 1)
-            else:
-                lbl.setFixedWidth(100 if text else 40)
-                th.addWidget(lbl)
-        table_layout.addLayout(th)
-        table_layout.addSpacing(10)
-
-        playlists = [("Deep Focus Architecture", "42", "Nov 12, 2026"), ("Late Night Felt Piano", "28", "Oct 24, 2026"), ("Rainy Studio Sessions", "19", "Sep 08, 2026")]
-        for title, songs, date in playlists:
-            row = QFrame()
-            row.setObjectName("PlaylistRow")
-            r_layout = QHBoxLayout(row)
-            r_layout.setContentsMargins(0, 10, 0, 10)
-            
-            t_lbl = QLabel(title)
-            t_lbl.setStyleSheet("color: white; font-size: 12px;")
-            s_lbl = QLabel(songs)
-            s_lbl.setFixedWidth(100)
-            s_lbl.setStyleSheet("color: #888; font-size: 11px;")
-            d_lbl = QLabel(date)
-            d_lbl.setFixedWidth(100)
-            d_lbl.setStyleSheet("color: #888; font-size: 11px;")
-            
-            p_btn = QPushButton("▶")
-            p_btn.setFixedSize(24, 24)
-            p_btn.setStyleSheet("background-color: #222; color: white; border: none; border-radius: 12px; font-size: 9px;")
-            
-            r_layout.addWidget(t_lbl, 1)
-            r_layout.addWidget(s_lbl)
-            r_layout.addWidget(d_lbl)
-            r_layout.addWidget(p_btn)
-            table_layout.addWidget(row)
-            
-        layout.addWidget(table_container)
-
-        # Followed Artists
-        fa_title = QLabel("Followed Artists")
-        fa_title.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
-        layout.addWidget(fa_title)
-
-        fa_layout = QHBoxLayout()
-        fa_layout.setSpacing(15)
-        artists = [("Nils Frahm", "#333"), ("Ólafur Arnalds", "#222"), ("Hania Rani", "#444"), ("Jon Hopkins", "#111")]
-        for name, color in artists:
-            card = QFrame()
-            card.setObjectName("ArtistCard")
-            card.setFixedSize(140, 160)
-            c_layout = QVBoxLayout(card)
-            c_layout.setAlignment(Qt.AlignCenter)
-            c_layout.setContentsMargins(15, 15, 15, 15)
-            art = QLabel()
-            art.setFixedSize(100, 100)
-            art.setStyleSheet(f"background-color: {color}; border-radius: 50px;")
-            t = QLabel(name)
-            t.setStyleSheet("color: white; font-size: 11px; font-weight: bold; margin-top: 10px;")
-            c_layout.addWidget(art)
-            c_layout.addWidget(t, alignment=Qt.AlignCenter)
-            fa_layout.addWidget(card)
-        fa_layout.addStretch()
-        layout.addLayout(fa_layout)
-
-        layout.addStretch()
-        scroll.setWidget(content)
-        return scroll
-
-    # ==========================================
-    # PLAYER BAR
-    # ==========================================
     def create_player_bar(self):
         player_bar = QWidget()
         player_bar.setObjectName("PlayerBar")
         player_bar.setFixedHeight(80)
-        player_bar.setStyleSheet("background-color: #0f0f0f; border-top: 1px solid #1a1a1a;")
         
         layout = QHBoxLayout(player_bar)
         layout.setContentsMargins(20, 10, 20, 10)
 
-        # Left (Track Info)
         left = QHBoxLayout()
         art = QLabel()
         art.setFixedSize(50, 50)
@@ -670,7 +281,6 @@ class MainWindow(QMainWindow):
         left.addLayout(info)
         left.addStretch()
 
-        # Center (Controls)
         center = QVBoxLayout()
         center.setSpacing(5)
         controls = QHBoxLayout()
@@ -694,7 +304,6 @@ class MainWindow(QMainWindow):
         center.addLayout(controls)
         center.addLayout(progress)
 
-        # Right (Volume)
         right = QHBoxLayout()
         right.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         vol_icon = QLabel("🔊")
