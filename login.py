@@ -317,6 +317,24 @@ class LoginWindow(QWidget):
             )
             self.image_label.setPixmap(scaled)
 
+    def prepare_for_login(self):
+        """Reset the form so a different user can sign in."""
+        self.form_stack.setCurrentIndex(0)
+        self.user_input.clear()
+        self.pass_input.clear()
+        self.error_label.clear()
+        self.login_btn.setText("Login Now")
+        self.login_btn.setEnabled(True)
+        self.su_user_input.clear()
+        self.su_pass_input.clear()
+        self.su_confirm_input.clear()
+        self.su_error_label.clear()
+        self.signup_btn.setText("Create Account")
+        self.signup_btn.setEnabled(True)
+        self.google_btn.setText("G   Login with Google")
+        self.google_btn.setEnabled(True)
+        self.user_input.setFocus()
+
     def handle_login(self):
         username = self.user_input.text().strip()
         password = self.pass_input.text().strip()

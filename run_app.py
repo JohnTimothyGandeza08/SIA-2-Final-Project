@@ -23,14 +23,14 @@ class AppRouter:
         self.login_window.hide()
 
     def show_login(self):
-        self.login_window.pass_input.clear()
-        self.login_window.error_label.clear()
+        self.login_window.prepare_for_login()
         self.login_window.show()
         self.login_window.raise_()
         self.login_window.activateWindow()
         if self.main_window is not None:
-            self.main_window.close()
+            window = self.main_window
             self.main_window = None
+            window.close()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
