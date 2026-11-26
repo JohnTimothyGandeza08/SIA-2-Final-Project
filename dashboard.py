@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QScrollArea, QFrame,
-    QSlider, QGridLayout, QStackedWidget
+    QSlider, QGridLayout, QStackedWidget, QSizePolicy
 )
 from PySide6.QtCore import Qt, QPointF, QUrl, QThread, Signal, QByteArray, QTimer, QSize
 from PySide6.QtGui import QPainter, QColor, QPolygonF, QBrush, QPixmap, QImage, QIcon, QPen
@@ -201,6 +201,9 @@ class MainWindow(QMainWindow):
         outer_layout.addWidget(self.navbar)
         
         # CRITICAL FIX: Give the stacked widget a stretch factor of 1
+        # so it takes up available space but DOES NOT push the bottom bar out.
+        # Also set size policy to Expanding/Ignored to prevent it from growing indefinitely.
+        self.stacked_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         outer_layout.addWidget(self.stacked_widget, 1)
         
         outer_layout.addWidget(self.create_player_bar())
