@@ -780,11 +780,17 @@ class MemoryMatchWidget(QWidget):
 # GAMES HUB PAGE
 # ==========================================
 class GamesPage(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, username="User", parent=None):
         super().__init__(parent)
+        self.username = username
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 20, 30, 20)
         layout.setSpacing(16)
+
+        # --- WELCOME MESSAGE ---
+        welcome_lbl = QLabel(f"Welcome, {self.username}!")
+        welcome_lbl.setStyleSheet("color: #0055ff; font-size: 18px; font-weight: bold; margin-bottom: 5px;")
+        layout.addWidget(welcome_lbl)
 
         # Header + Game Switcher
         top_row = QHBoxLayout()

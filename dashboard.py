@@ -68,8 +68,9 @@ class SearchWorker(QThread):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, username="User"):
         super().__init__()
+        self.username = username  # Store the username
         self.setWindowTitle("Pulse")
         self.resize(1100, 800)
         self.setStyleSheet(DARK_THEME)
@@ -173,7 +174,9 @@ class MainWindow(QMainWindow):
         self.header_search.setFixedSize(240, 30)
         self.header_search.returnPressed.connect(self._on_header_search)
 
-        profile = QLabel("J")
+        # Profile icon with user's initial
+        initial = self.username[0].upper() if self.username else "U"
+        profile = QLabel(initial)
         profile.setFixedSize(30, 30)
         profile.setAlignment(Qt.AlignCenter)
         profile.setStyleSheet("background: white; color: black; border-radius: 15px; font-weight: bold; font-size: 12px;")
@@ -209,7 +212,7 @@ class MainWindow(QMainWindow):
 
         # --- 3. STACKED WIDGET ---
         self.stacked_widget = QStackedWidget()
-        self.games_page = GamesPage()
+        self.games_page = GamesPage(username=self.username)
         self.stacked_widget.addWidget(self.build_home_page())      # Index 0
         self.stacked_widget.addWidget(self.build_search_page())    # Index 1
         self.stacked_widget.addWidget(self.build_library_page())   # Index 2
@@ -245,10 +248,17 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setAlignment(Qt.AlignCenter)
+        
+        # Welcome Message for Video
+        welcome_lbl = QLabel(f"Welcome, {self.username}!")
+        welcome_lbl.setStyleSheet("color: #0055ff; font-size: 18px; font-weight: bold; margin-bottom: 10px;")
+        
         title = QLabel("Video")
         title.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
         sub = QLabel("Video streaming is coming soon.")
         sub.setStyleSheet("color: #777; font-size: 12px;")
+        
+        layout.addWidget(welcome_lbl, alignment=Qt.AlignCenter)
         layout.addWidget(title, alignment=Qt.AlignCenter)
         layout.addWidget(sub, alignment=Qt.AlignCenter)
         return page
@@ -630,6 +640,14 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(30, 20, 30, 20)
         layout.setSpacing(25)
+
+        # --- WELCOME MESSAGE ---
+        welcome_header = QHBoxLayout()
+        welcome_lbl = QLabel(f"Welcome back, {self.username}!")
+        welcome_lbl.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
+        welcome_header.addWidget(welcome_lbl)
+        welcome_header.addStretch()
+        layout.addLayout(welcome_header)
 
         # --- HERO BANNER ---
         hero = QFrame()
@@ -1602,6 +1620,6 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     from PySide6.QtWidgets import QApplication
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = MainWindow(username="TestUser")
     window.show()
     sys.exit(app.exec())

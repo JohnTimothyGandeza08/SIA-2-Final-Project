@@ -1,8 +1,13 @@
 # login.py
 import os
+import sqlite3
+import hashlib
+import secrets
+import binascii
+import sys
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QFrame, QMessageBox
+    QLabel, QLineEdit, QPushButton, QFrame, QMessageBox, QApplication
 )
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QPixmap
@@ -107,9 +112,54 @@ color: #ff4444; font-size: 11px;
 }
 """
 
+# ==========================================
+# DATABASE & HASHING HELPERS
+# ==========================================
+DB_FILE = "users.db"
 
+def setup_database():
+    """Creates the SQLite database and a default user if it doesn't exist."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL
+        )
+    ''')
+    
+    # Create a default admin user for testing if not exists
+    cursor.execute("SELECT * FROM users WHERE username = 'admin'")
+    if not cursor.fetchone():
+        # Hashing "1234" securely with a salt
+        salt = secrets.token_hex(16)
+        pwd_hash = hashlib.pbkdf2_hmac('sha256', b'1234', bytes.fromhex(salt), 100000)
+        # Store salt and hash together (format: salt$hash)
+        stored_value = f"{salt}${binascii.hexlify(pwd_hash).decode('utf-8')}"
+        cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", ("admin", stored_value))
+        print("Default user 'admin' created with password '1234'")
+        
+    conn.commit()
+    conn.close()
+
+def verify_password(stored_password, provided_password):
+    """Verify a stored password against one provided by user"""
+    try:
+        salt, stored_hash = stored_password.split('$')
+        pwd_hash = hashlib.pbkdf2_hmac('sha256', provided_password.encode('utf-8'), bytes.fromhex(salt), 100000)
+        return pwd_hash == bytes.fromhex(stored_hash)
+    except ValueError:
+        return False
+
+# Initialize DB on startup
+setup_database()
+
+# ==========================================
+# GUI CLASS
+# ==========================================
 class LoginWindow(QWidget):
-    login_successful = Signal()
+    # Signal now passes the username string
+    login_successful = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -123,7 +173,6 @@ class LoginWindow(QWidget):
         main_layout.setSpacing(0)
 
         # LEFT PANEL (The Form)
-
         left_panel = QFrame()
         left_panel.setObjectName("LeftPanel")
         left_panel.setFixedWidth(380)
@@ -146,6 +195,9 @@ class LoginWindow(QWidget):
         self.pass_input = QLineEdit()
         self.pass_input.setPlaceholderText("🔒  Password")
         self.pass_input.setEchoMode(QLineEdit.Password)
+        
+        # Allow pressing Enter to login
+        self.pass_input.returnPressed.connect(self.handle_login)
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("ErrorLabel")
@@ -157,11 +209,11 @@ class LoginWindow(QWidget):
         self.login_btn.clicked.connect(self.handle_login)
 
         divider_layout = QHBoxLayout()
-        line_left = QFrame();
-        line_left.setFrameShape(QFrame.HLine);
+        line_left = QFrame()
+        line_left.setFrameShape(QFrame.HLine)
         line_left.setStyleSheet("color: #333;")
-        line_right = QFrame();
-        line_right.setFrameShape(QFrame.HLine);
+        line_right = QFrame()
+        line_right.setFrameShape(QFrame.HLine)
         line_right.setStyleSheet("color: #333;")
         divider_lbl = QLabel("Login with Others")
         divider_lbl.setObjectName("DividerLabel")
@@ -174,7 +226,6 @@ class LoginWindow(QWidget):
         self.google_btn = QPushButton("G   Login with Google")
         self.google_btn.setObjectName("SocialBtn")
         self.google_btn.setCursor(Qt.PointingHandCursor)
-        # Connect to the OAuth function
         self.google_btn.clicked.connect(self.handle_google_oauth)
 
         self.facebook_btn = QPushButton("f   Login with Facebook")
@@ -245,11 +296,20 @@ class LoginWindow(QWidget):
         self.login_btn.setText("Logging in...")
         self.login_btn.setEnabled(False)
 
-        QTimer.singleShot(1000, lambda: self.verify_credentials(username, password))
+        # Small delay for UI feedback
+        QTimer.singleShot(500, lambda: self.verify_credentials(username, password))
 
     def verify_credentials(self, username, password):
-        if username == "admin" and password == "1234":
-            self.login_successful.emit()
+        """Checks the SQLite database for the user and verifies the hash."""
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT password_hash FROM users WHERE username = ?", (username,))
+        result = cursor.fetchone()
+        conn.close()
+
+        # Check if user exists and password hash matches
+        if result and verify_password(result[0], password):
+            self.login_successful.emit(username) # Emit the username
         else:
             self.error_label.setText("Invalid username or password.")
             self.login_btn.setText("Login Now")
@@ -265,13 +325,35 @@ class LoginWindow(QWidget):
         self.google_btn.setEnabled(False)
         self.login_btn.setEnabled(False)
 
-        # Simulates the 2 seconds it takes to open the browser, log in, and redirect back
         QTimer.singleShot(2000, self.finish_google_oauth)
 
     def finish_google_oauth(self):
         """Runs after the simulated browser login is done."""
         self.google_btn.setText("Success!")
         QMessageBox.information(self, "OAuth Success", "Logged in with Google successfully!")
+        # For OAuth, we pass a generic name or a name from the OAuth provider
+        self.login_successful.emit("GoogleUser")
 
-        # Trigger the transition to the main dashboard
-        self.login_successful.emit()
+
+# ==========================================
+# ENTRY POINT
+# ==========================================
+if __name__ == "__main__":
+    from dashboard import MainWindow
+    
+    app = QApplication(sys.argv)
+    
+    login_window = LoginWindow()
+    dashboard_window = None # Keep reference to prevent garbage collection
+
+    def on_login_success(username):
+        global dashboard_window
+        print(f"Login successful for: {username}")
+        dashboard_window = MainWindow(username=username)
+        dashboard_window.show()
+        login_window.close()
+
+    login_window.login_successful.connect(on_login_success)
+    login_window.show()
+    
+    sys.exit(app.exec())
