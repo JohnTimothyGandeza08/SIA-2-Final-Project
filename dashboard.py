@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QPointF, QUrl
 from PySide6.QtGui import QPainter, QColor, QPolygonF, QBrush, QPixmap
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from theme import DARK_THEME
 import jamendo_api
@@ -17,6 +18,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Pulse")
         self.resize(1100, 800)
         self.setStyleSheet(DARK_THEME)
+
+        # Setup Media Player
+        self.media_player = QMediaPlayer()
+        self.audio_output = QAudioOutput()
+        self.media_player.setAudioOutput(self.audio_output)
 
         main_widget = QWidget()
         main_widget.setObjectName("MainContainer")
@@ -108,26 +114,20 @@ class MainWindow(QMainWindow):
         outer_layout.addWidget(self.stacked_widget, 1)
         outer_layout.addWidget(self.create_player_bar())
 
-    # --- MEDIA PLAYER SETUP ---
-    def play_jamendo_track(self, audio_url, track_name, artist_name):
-        from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-        if not hasattr(self, 'media_player'):
-            self.media_player = QMediaPlayer()
-            self.audio_output = QAudioOutput()
-            self.media_player.setAudioOutput(self.audio_output)
-
-        self.media_player.setSource(QUrl(audio_url))
-        self.media_player.play()
-        
-        self.player_title.setText(track_name)
-        self.player_artist.setText(artist_name)
-
     def set_page(self, index):
         self.stacked_widget.setCurrentIndex(index)
         for i, btn in enumerate(self.nav_buttons):
             btn.setObjectName("NavTopBtnActive" if i == index else "NavTopBtn")
             btn.style().unpolish(btn)
             btn.style().polish(btn)
+
+    def play_jamendo_track(self, audio_url, track_name, artist_name):
+        self.media_player.setSource(QUrl(audio_url))
+        self.media_player.play()
+        
+        # Update player bar
+        self.player_title.setText(track_name)
+        self.player_artist.setText(artist_name)
 
     def _create_play_icon(self, size=40, color="#ffffff", bg_color="#0055ff"):
         pixmap = QPixmap(size, size)
@@ -255,7 +255,7 @@ class MainWindow(QMainWindow):
         tracks = jamendo_api.fetch_trending_tracks(limit=4)
         
         if not tracks:
-            layout.addWidget(QLabel("Failed to load Jamendo tracks. Check your internet/API key."))
+            layout.addWidget(QLabel("Failed to load Jamendo tracks. Check terminal for details."))
         else:
             for track in tracks:
                 card = QFrame()
@@ -636,7 +636,7 @@ class MainWindow(QMainWindow):
         info = QVBoxLayout()
         info.setSpacing(2)
         
-        # CHANGED: saved as self. variables so Jamendo can update them
+        # Changed to self. variables so Jamendo can update them
         self.player_title = QLabel("All Melody")
         self.player_title.setStyleSheet("color: white; font-weight: bold; font-size: 12px;")
         self.player_artist = QLabel("Nils Frahm")
