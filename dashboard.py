@@ -13,6 +13,7 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from theme import DARK_THEME
 import jamendo_api
+from games_page import GamesPage
 
 
 class ClickableFrame(QFrame):
@@ -85,6 +86,7 @@ class MainWindow(QMainWindow):
         self._expected_duration_ms = 0
         self._seeking = False
         self._last_volume = 80
+        self.current_music_page = 0
 
         self.home_play_buttons = []
         self.search_play_buttons = []
@@ -145,7 +147,7 @@ class MainWindow(QMainWindow):
         logo_box.addWidget(logo_icon)
         logo_box.addWidget(logo_text)
 
-        # Center: Segmented Control
+        # Center: Segmented Control (Music | Video | Games)
         seg_widget = QWidget()
         seg_widget.setObjectName("SegmentedControl")
         seg_widget.setFixedSize(240, 34)
@@ -154,12 +156,15 @@ class MainWindow(QMainWindow):
         seg_layout.setContentsMargins(4, 4, 4, 4)
         seg_layout.setSpacing(0)
 
+        self.mode_buttons = []
         for i, text in enumerate(["Music", "Video", "Games"]):
             btn = QPushButton(text)
             btn.setObjectName("SegBtnActive" if i == 0 else "SegBtn")
             btn.setCursor(Qt.PointingHandCursor)
             btn.setFixedWidth(77)
+            btn.clicked.connect(lambda checked, idx=i: self._set_top_mode(idx))
             seg_layout.addWidget(btn)
+            self.mode_buttons.append(btn)
 
         # Right: Search + Profile
         self.header_search = QLineEdit()
@@ -181,10 +186,10 @@ class MainWindow(QMainWindow):
         h_layout.addWidget(profile)
 
         # --- 2. NAVBAR ---
-        navbar = QWidget()
-        navbar.setObjectName("TopNavBar")
-        navbar.setFixedHeight(56)
-        nav_layout = QHBoxLayout(navbar)
+        self.navbar = QWidget()
+        self.navbar.setObjectName("TopNavBar")
+        self.navbar.setFixedHeight(56)
+        nav_layout = QHBoxLayout(self.navbar)
         nav_layout.setContentsMargins(30, 0, 30, 0)
         nav_layout.setSpacing(8)
 
@@ -204,15 +209,49 @@ class MainWindow(QMainWindow):
 
         # --- 3. STACKED WIDGET ---
         self.stacked_widget = QStackedWidget()
+        self.games_page = GamesPage()
         self.stacked_widget.addWidget(self.build_home_page())      # Index 0
         self.stacked_widget.addWidget(self.build_search_page())    # Index 1
         self.stacked_widget.addWidget(self.build_library_page())   # Index 2
+        self.stacked_widget.addWidget(self.build_video_page())     # Index 3
+        self.stacked_widget.addWidget(self.games_page)             # Index 4
 
         # --- 4. ASSEMBLE ---
         outer_layout.addWidget(header)
-        outer_layout.addWidget(navbar)
+        outer_layout.addWidget(self.navbar)
         outer_layout.addWidget(self.stacked_widget, 1)
         outer_layout.addWidget(self.create_player_bar())
+
+    def _set_top_mode(self, mode_index):
+        for i, btn in enumerate(self.mode_buttons):
+            btn.setObjectName("SegBtnActive" if i == mode_index else "SegBtn")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+        if mode_index != 2:
+            self.games_page.pause_all()
+
+        if mode_index == 0:
+            self.navbar.show()
+            self.stacked_widget.setCurrentIndex(self.current_music_page)
+        elif mode_index == 1:
+            self.navbar.hide()
+            self.stacked_widget.setCurrentIndex(3)
+        elif mode_index == 2:
+            self.navbar.hide()
+            self.stacked_widget.setCurrentIndex(4)
+
+    def build_video_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setAlignment(Qt.AlignCenter)
+        title = QLabel("Video")
+        title.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
+        sub = QLabel("Video streaming is coming soon.")
+        sub.setStyleSheet("color: #777; font-size: 12px;")
+        layout.addWidget(title, alignment=Qt.AlignCenter)
+        layout.addWidget(sub, alignment=Qt.AlignCenter)
+        return page
 
     # ==========================================
     # VECTOR PLAYER ICONS (2x HiDPI)
@@ -342,6 +381,7 @@ class MainWindow(QMainWindow):
             btn.setStyleSheet(active_style if i == active_index else inactive_style)
 
     def set_page(self, index):
+        self.current_music_page = index
         self.stacked_widget.setCurrentIndex(index)
         self._update_nav_pills(index)
 
@@ -889,6 +929,7 @@ class MainWindow(QMainWindow):
         query = self.header_search.text().strip()
         if not query:
             return
+        self._set_top_mode(0)
         self.set_page(1)
         self._quick_search(query)
 
