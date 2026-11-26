@@ -7,8 +7,8 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QScrollArea, QFrame,
     QSlider, QGridLayout, QStackedWidget
 )
-from PySide6.QtCore import Qt, QPointF, QUrl, QThread, Signal, QByteArray, QTimer
-from PySide6.QtGui import QPainter, QColor, QPolygonF, QBrush, QPixmap, QImage
+from PySide6.QtCore import Qt, QPointF, QUrl, QThread, Signal, QByteArray, QTimer, QSize
+from PySide6.QtGui import QPainter, QColor, QPolygonF, QBrush, QPixmap, QImage, QIcon, QPen
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from theme import DARK_THEME
@@ -84,6 +84,7 @@ class MainWindow(QMainWindow):
         self.current_index = -1
         self._expected_duration_ms = 0
         self._seeking = False
+        self._last_volume = 80
 
         self.home_play_buttons = []
         self.search_play_buttons = []
@@ -211,6 +212,104 @@ class MainWindow(QMainWindow):
         outer_layout.addWidget(navbar)
         outer_layout.addWidget(self.stacked_widget, 1)
         outer_layout.addWidget(self.create_player_bar())
+
+    # ==========================================
+    # VECTOR PLAYER ICONS (2x HiDPI)
+    # ==========================================
+    def _new_icon_canvas(self, size):
+        pixmap = QPixmap(size * 2, size * 2)
+        pixmap.setDevicePixelRatio(2.0)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        return pixmap, painter
+
+    def _make_prev_icon(self, size=18, color="#b3b3b3"):
+        pixmap, p = self._new_icon_canvas(size)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(QColor(color)))
+        bar_w = size * 0.12
+        margin = size * 0.18
+        p.drawRect(int(margin), int(margin), max(2, int(bar_w)), int(size - 2 * margin))
+        tri = QPolygonF([
+            QPointF(size - margin, margin),
+            QPointF(margin + bar_w + 1, size * 0.5),
+            QPointF(size - margin, size - margin),
+        ])
+        p.drawPolygon(tri)
+        p.end()
+        return QIcon(pixmap)
+
+    def _make_next_icon(self, size=18, color="#b3b3b3"):
+        pixmap, p = self._new_icon_canvas(size)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(QColor(color)))
+        bar_w = size * 0.12
+        margin = size * 0.18
+        tri = QPolygonF([
+            QPointF(margin, margin),
+            QPointF(size - margin - bar_w - 1, size * 0.5),
+            QPointF(margin, size - margin),
+        ])
+        p.drawPolygon(tri)
+        p.drawRect(int(size - margin - bar_w), int(margin), max(2, int(bar_w)), int(size - 2 * margin))
+        p.end()
+        return QIcon(pixmap)
+
+    def _make_play_icon(self, size=16, color="#000000"):
+        pixmap, p = self._new_icon_canvas(size)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(QColor(color)))
+        tri = QPolygonF([
+            QPointF(size * 0.28, size * 0.16),
+            QPointF(size * 0.84, size * 0.5),
+            QPointF(size * 0.28, size * 0.84),
+        ])
+        p.drawPolygon(tri)
+        p.end()
+        return QIcon(pixmap)
+
+    def _make_pause_icon(self, size=16, color="#000000"):
+        pixmap, p = self._new_icon_canvas(size)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(QColor(color)))
+        bar_w = max(2, int(size * 0.18))
+        h = int(size * 0.66)
+        y = int(size * 0.17)
+        p.drawRect(int(size * 0.24), y, bar_w, h)
+        p.drawRect(int(size * 0.58), y, bar_w, h)
+        p.end()
+        return QIcon(pixmap)
+
+    def _make_volume_icon(self, size=16, color="#b3b3b3", muted=False):
+        pixmap, p = self._new_icon_canvas(size)
+        pen = QPen(QColor(color))
+        pen.setWidthF(1.5)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+
+        # Speaker body
+        speaker = QPolygonF([
+            QPointF(2.0, 6.0),
+            QPointF(5.0, 6.0),
+            QPointF(8.5, 3.0),
+            QPointF(8.5, 13.0),
+            QPointF(5.0, 10.0),
+            QPointF(2.0, 10.0),
+        ])
+        p.drawPolygon(speaker)
+
+        if muted:
+            p.drawLine(QPointF(11.0, 5.5), QPointF(14.5, 10.5))
+            p.drawLine(QPointF(14.5, 5.5), QPointF(11.0, 10.5))
+        else:
+            p.drawArc(7, 4, 5, 8, -55 * 16, 110 * 16)
+            p.drawArc(7, 2, 8, 12, -55 * 16, 110 * 16)
+
+        p.end()
+        return QIcon(pixmap)
 
     def set_page(self, index):
         self.stacked_widget.setCurrentIndex(index)
@@ -378,7 +477,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_play_buttons(self, playing):
         if hasattr(self, "play_pause_btn"):
-            self.play_pause_btn.setText("⏸" if playing else "▶")
+            self.play_pause_btn.setIcon(self._pause_icon if playing else self._play_icon)
         for btn, url in self.home_play_buttons + self.search_play_buttons + self.library_play_buttons:
             btn.setText("⏸" if playing and url == self.current_audio_url else "▶")
 
@@ -429,6 +528,17 @@ class MainWindow(QMainWindow):
 
     def _on_volume_changed(self, value):
         self.audio_output.setVolume(value / 100)
+        if value > 0:
+            self._last_volume = value
+        if hasattr(self, "vol_btn"):
+            self.vol_btn.setIcon(self._vol_muted_icon if value == 0 else self._vol_icon)
+
+    def _toggle_mute(self):
+        if self.vol_slider.value() > 0:
+            self._last_volume = self.vol_slider.value()
+            self.vol_slider.setValue(0)
+        else:
+            self.vol_slider.setValue(self._last_volume or 80)
 
     def _clear_layout(self, layout):
         while layout.count():
@@ -948,14 +1058,17 @@ class MainWindow(QMainWindow):
                 info_layout.addWidget(artist_name_lbl)
                 info_layout.addWidget(artist_stats)
 
-                main_play_btn = QPushButton("▶")
-                main_play_btn.setObjectName("MainPlayBtn")
+                main_play_btn = QPushButton()
                 main_play_btn.setFixedSize(44, 44)
                 main_play_btn.setCursor(Qt.PointingHandCursor)
+                main_play_btn.setStyleSheet(
+                    "QPushButton { background-color: #ffffff; border: none; border-radius: 22px; }"
+                    "QPushButton:hover { background-color: #e6e6e6; }"
+                    "QPushButton:disabled { background-color: #333333; }"
+                )
+                main_play_btn.setIcon(self._make_play_icon(18, "#000000"))
+                main_play_btn.setIconSize(QSize(18, 18))
                 if artist_tracks:
-                    first_url = artist_tracks[0].get("audio")
-                    if first_url:
-                        self.search_play_buttons.append((main_play_btn, first_url))
                     main_play_btn.clicked.connect(
                         lambda checked, tr=artist_tracks[0], pl=artist_tracks: self.play_track(tr, pl, 0)
                     )
@@ -1162,13 +1275,16 @@ class MainWindow(QMainWindow):
         lb_text.addWidget(lb_title)
         lb_text.addWidget(self.liked_banner_sub)
 
-        self.liked_banner_play_btn = QPushButton("▶")
+        self.liked_banner_play_btn = QPushButton()
         self.liked_banner_play_btn.setFixedSize(40, 40)
         self.liked_banner_play_btn.setCursor(Qt.PointingHandCursor)
         self.liked_banner_play_btn.setStyleSheet(
-            "background-color: white; color: #0055ff; border: none; "
-            "border-radius: 20px; font-size: 14px; font-weight: bold;"
+            "QPushButton { background-color: white; border: none; border-radius: 20px; }"
+            "QPushButton:hover { background-color: #e6e6e6; }"
+            "QPushButton:disabled { background-color: #cccccc; }"
         )
+        self.liked_banner_play_btn.setIcon(self._make_play_icon(16, "#0055ff"))
+        self.liked_banner_play_btn.setIconSize(QSize(16, 16))
         self.liked_banner_play_btn.clicked.connect(self._play_liked_songs)
 
         lb_layout.addWidget(heart_box)
@@ -1325,6 +1441,12 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(player_bar)
         layout.setContentsMargins(20, 10, 20, 10)
 
+        # Pre-build crisp vector icons
+        self._play_icon = self._make_play_icon(16, "#000000")
+        self._pause_icon = self._make_pause_icon(16, "#000000")
+        self._vol_icon = self._make_volume_icon(16, "#b3b3b3", muted=False)
+        self._vol_muted_icon = self._make_volume_icon(16, "#b3b3b3", muted=True)
+
         left = QHBoxLayout()
         self.player_art = QLabel()
         self.player_art.setFixedSize(50, 50)
@@ -1355,26 +1477,43 @@ class MainWindow(QMainWindow):
         left.addStretch()
 
         center = QVBoxLayout()
-        center.setSpacing(5)
+        center.setSpacing(6)
         controls = QHBoxLayout()
         controls.setAlignment(Qt.AlignCenter)
+        controls.setSpacing(14)
 
-        prev_btn = QPushButton("⏮")
-        prev_btn.setObjectName("PlayControls")
+        skip_btn_style = (
+            "QPushButton { background: transparent; border: none; border-radius: 14px; }"
+            "QPushButton:hover { background-color: rgba(255, 255, 255, 0.08); }"
+        )
+
+        prev_btn = QPushButton()
+        prev_btn.setFixedSize(28, 28)
         prev_btn.setCursor(Qt.PointingHandCursor)
+        prev_btn.setStyleSheet(skip_btn_style)
+        prev_btn.setIcon(self._make_prev_icon(18, "#d0d0d0"))
+        prev_btn.setIconSize(QSize(18, 18))
         prev_btn.clicked.connect(self.play_previous_track)
         controls.addWidget(prev_btn)
 
-        self.play_pause_btn = QPushButton("▶")
-        self.play_pause_btn.setObjectName("MainPlayBtn")
-        self.play_pause_btn.setFixedSize(32, 32)
+        self.play_pause_btn = QPushButton()
+        self.play_pause_btn.setFixedSize(36, 36)
         self.play_pause_btn.setCursor(Qt.PointingHandCursor)
+        self.play_pause_btn.setStyleSheet(
+            "QPushButton { background-color: #ffffff; border: none; border-radius: 18px; }"
+            "QPushButton:hover { background-color: #e6e6e6; }"
+        )
+        self.play_pause_btn.setIcon(self._play_icon)
+        self.play_pause_btn.setIconSize(QSize(16, 16))
         self.play_pause_btn.clicked.connect(self.toggle_play_pause)
         controls.addWidget(self.play_pause_btn)
 
-        next_btn = QPushButton("⏭")
-        next_btn.setObjectName("PlayControls")
+        next_btn = QPushButton()
+        next_btn.setFixedSize(28, 28)
         next_btn.setCursor(Qt.PointingHandCursor)
+        next_btn.setStyleSheet(skip_btn_style)
+        next_btn.setIcon(self._make_next_icon(18, "#d0d0d0"))
+        next_btn.setIconSize(QSize(18, 18))
         next_btn.clicked.connect(self.play_next_track)
         controls.addWidget(next_btn)
 
@@ -1395,15 +1534,26 @@ class MainWindow(QMainWindow):
         center.addLayout(progress)
 
         right = QHBoxLayout()
-        right.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        vol_icon = QLabel("🔊")
-        vol_icon.setStyleSheet("color: #888; font-size: 12px;")
+        right.setContentsMargins(0, 0, 0, 0)
+        right.setSpacing(8)
+        right.addStretch()
+
+        self.vol_btn = QPushButton()
+        self.vol_btn.setFixedSize(24, 24)
+        self.vol_btn.setCursor(Qt.PointingHandCursor)
+        self.vol_btn.setStyleSheet("background: transparent; border: none;")
+        self.vol_btn.setIcon(self._vol_icon)
+        self.vol_btn.setIconSize(QSize(16, 16))
+        self.vol_btn.clicked.connect(self._toggle_mute)
+
         self.vol_slider = QSlider(Qt.Horizontal)
         self.vol_slider.setRange(0, 100)
         self.vol_slider.setValue(80)
         self.vol_slider.setFixedWidth(100)
+        self.vol_slider.setCursor(Qt.PointingHandCursor)
         self.vol_slider.valueChanged.connect(self._on_volume_changed)
-        right.addWidget(vol_icon)
+
+        right.addWidget(self.vol_btn)
         right.addWidget(self.vol_slider)
 
         layout.addLayout(left, 1)
