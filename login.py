@@ -335,7 +335,6 @@ class LoginWindow(QWidget):
         result = cursor.fetchone()
         conn.close()
         if result and verify_password(result[0], password):
-            # Debug print to confirm we are emitting the right name
             print(f"[LOGIN] Successfully verified user: '{username}'. Emitting signal...")
             self.login_successful.emit(username)
         else:
@@ -384,56 +383,5 @@ class LoginWindow(QWidget):
         QMessageBox.information(self, "OAuth Success", "Logged in with Google successfully!")
         self.login_successful.emit("GoogleUser")
 
-
-if __name__ == "__main__":
-    # IMPORTANT: Ensure the dashboard module is imported correctly
-    from dashboard import MainWindow
-    
-    app = QApplication(sys.argv)
-    login_window = LoginWindow()
-    dashboard_window = None
-
-    def on_login_success(username):
-        global dashboard_window
-        
-        # Safety check to ensure username isn't empty or None
-        if not username:
-            username = "UnknownUser"
-            
-        print(f"[MAIN] Login successful. Received username: '{username}'")
-        print(f"[MAIN] Instantiating MainWindow with username='{username}'")
-        
-        # Pass the username explicitly to the MainWindow constructor
-        dashboard_window = MainWindow(username=username)
-        dashboard_window.show()
-        
-        # Close login window
-        login_window.close()
-
-    # Connect the signal from LoginWindow to the handler function
-    login_window.login_successful.connect(on_login_success)
-    login_window.show()
-    
-    sys.exit(app.exec())
-    
-    # login.py (at the very bottom)
-
-if __name__ == "__main__":
-    from dashboard import MainWindow
-    
-    app = QApplication(sys.argv)
-    login_window = LoginWindow()
-    dashboard_window = None
-
-    def on_login_success(username):
-        global dashboard_window
-        print(f"[MAIN] Login successful. Received username: '{username}'")
-        
-        # This line creates the window with the username
-        dashboard_window = MainWindow(username=username) 
-        dashboard_window.show()
-        login_window.close()
-
-    login_window.login_successful.connect(on_login_success)
-    login_window.show()
-    sys.exit(app.exec())
+# NO `if __name__ == "__main__":` BLOCK HERE.
+# Your app is launched via `run_app.py` instead.

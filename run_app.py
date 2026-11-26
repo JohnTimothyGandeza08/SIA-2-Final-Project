@@ -15,8 +15,9 @@ class AppRouter:
     def start(self):
         self.login_window.show()
 
-    def show_dashboard(self):
-        self.main_window = MainWindow()
+    def show_dashboard(self, username):
+        # EXPLICITLY pass the username received from the signal
+        self.main_window = MainWindow(username=username) 
         self.main_window.show()
         self.login_window.close()
 
