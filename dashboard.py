@@ -467,6 +467,7 @@ class GameHubWindow(QMainWindow):
         self.menu_widget = QWidget()
         self.menu_widget.setObjectName("menuWidget")
         menu_layout = QVBoxLayout(self.menu_widget)
+        menu_layout.setSpacing(14)
 
         # 1. Top stretch to push everything down
         menu_layout.addStretch()
@@ -486,10 +487,29 @@ class GameHubWindow(QMainWindow):
             ("🦸 Memory Match", MemoryGame),
         ]
 
+        menu_button_style = """
+            QPushButton {
+                background-color: #181818;
+                color: #e0e0e0;
+                border: 2px solid #45475a;
+                border-radius: 10px;
+                padding: 12px 18px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1e1e2e;
+                color: #89b4fa;
+                border: 2px solid #89b4fa;
+            }
+        """
+
         for name, game_class in games:
             btn = QPushButton(name)
             btn.setObjectName("menuButton")
-            btn.setFixedWidth(350)
+            btn.setFixedSize(350, 56)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(menu_button_style)
             btn.clicked.connect(lambda checked, gc=game_class: self.launch_game(gc))
             menu_layout.addWidget(btn, alignment=Qt.AlignCenter)
 
