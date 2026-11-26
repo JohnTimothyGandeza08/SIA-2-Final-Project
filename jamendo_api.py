@@ -63,7 +63,7 @@ def _request_tracks(params):
     return data.get("results") or []
 
 
-def fetch_trending_tracks(limit=4):
+def fetch_trending_tracks(limit=20):
     queries = [
         {"limit": 15, "order": "popularity_week"},
         {"limit": 15, "order": "popularity_total"},

@@ -25,7 +25,11 @@ class MainWindow(QMainWindow):
         self.media_player.setAudioOutput(self.audio_output)
         self.current_audio_url = ""
         self.track_play_buttons = []
+        self._seeking = False
         self.media_player.playbackStateChanged.connect(self._on_playback_state_changed)
+        self.media_player.positionChanged.connect(self._on_position_changed)
+        self.media_player.durationChanged.connect(self._on_duration_changed)
+        self.audio_output.setVolume(0.8)
 
         main_widget = QWidget()
         main_widget.setObjectName("MainContainer")
@@ -157,6 +161,37 @@ class MainWindow(QMainWindow):
             self.play_pause_btn.setText("⏸" if playing else "▶")
         for btn, url in self.track_play_buttons:
             btn.setText("⏸" if playing and url == self.current_audio_url else "▶")
+
+    def _format_time(self, ms):
+        seconds = max(0, int(ms // 1000))
+        return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+    def _on_position_changed(self, position):
+        if self._seeking or not hasattr(self, "progress_slider"):
+            return
+        self.progress_slider.blockSignals(True)
+        self.progress_slider.setValue(position)
+        self.progress_slider.blockSignals(False)
+        self.time_now.setText(self._format_time(position))
+
+    def _on_duration_changed(self, duration):
+        if not hasattr(self, "progress_slider"):
+            return
+        self.progress_slider.setMaximum(max(duration, 0))
+        self.time_total.setText(self._format_time(duration))
+
+    def _on_seek_pressed(self):
+        self._seeking = True
+
+    def _on_seek_released(self):
+        self._seeking = False
+        self.media_player.setPosition(self.progress_slider.value())
+
+    def _on_seek_moved(self, value):
+        self.time_now.setText(self._format_time(value))
+
+    def _on_volume_changed(self, value):
+        self.audio_output.setVolume(value / 100)
 
     def _create_play_icon(self, size=40, color="#ffffff", bg_color="#0055ff"):
         pixmap = QPixmap(size, size)
@@ -702,15 +737,18 @@ class MainWindow(QMainWindow):
         controls.addWidget(next_btn)
 
         progress = QHBoxLayout()
-        now = QLabel("02:41")
-        now.setStyleSheet("color: #888; font-size: 9px;")
-        slider = QSlider(Qt.Horizontal)
-        slider.setValue(30)
-        total = QLabel("09:30")
-        total.setStyleSheet("color: #888; font-size: 9px;")
-        progress.addWidget(now)
-        progress.addWidget(slider)
-        progress.addWidget(total)
+        self.time_now = QLabel("00:00")
+        self.time_now.setStyleSheet("color: #888; font-size: 9px;")
+        self.progress_slider = QSlider(Qt.Horizontal)
+        self.progress_slider.setRange(0, 0)
+        self.progress_slider.sliderPressed.connect(self._on_seek_pressed)
+        self.progress_slider.sliderReleased.connect(self._on_seek_released)
+        self.progress_slider.sliderMoved.connect(self._on_seek_moved)
+        self.time_total = QLabel("00:00")
+        self.time_total.setStyleSheet("color: #888; font-size: 9px;")
+        progress.addWidget(self.time_now)
+        progress.addWidget(self.progress_slider)
+        progress.addWidget(self.time_total)
         center.addLayout(controls)
         center.addLayout(progress)
 
@@ -718,10 +756,13 @@ class MainWindow(QMainWindow):
         right.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         vol_icon = QLabel("🔊")
         vol_icon.setStyleSheet("color: #888; font-size: 12px;")
-        vol_slider = QSlider(Qt.Horizontal)
-        vol_slider.setFixedWidth(100)
+        self.vol_slider = QSlider(Qt.Horizontal)
+        self.vol_slider.setRange(0, 100)
+        self.vol_slider.setValue(80)
+        self.vol_slider.setFixedWidth(100)
+        self.vol_slider.valueChanged.connect(self._on_volume_changed)
         right.addWidget(vol_icon)
-        right.addWidget(vol_slider)
+        right.addWidget(self.vol_slider)
 
         layout.addLayout(left, 1)
         layout.addLayout(center, 2)
