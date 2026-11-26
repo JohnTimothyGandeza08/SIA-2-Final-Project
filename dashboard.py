@@ -186,19 +186,20 @@ class MainWindow(QMainWindow):
         navbar.setFixedHeight(56)
         nav_layout = QHBoxLayout(navbar)
         nav_layout.setContentsMargins(30, 0, 30, 0)
-        nav_layout.setSpacing(15)
+        nav_layout.setSpacing(8)
 
         self.nav_buttons = []
-        nav_items = [("🏠  Home", 0), ("🔍  Search", 1), ("📚  Your Library", 2)]
+        nav_items = [("Home", 0), ("Search", 1), ("Your Library", 2)]
 
         for text, index in nav_items:
             btn = QPushButton(text)
-            btn.setObjectName("NavTopBtnActive" if index == 0 else "NavTopBtn")
+            btn.setFixedHeight(32)
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda checked, i=index: self.set_page(i))
             nav_layout.addWidget(btn)
             self.nav_buttons.append(btn)
 
+        self._update_nav_pills(0)
         nav_layout.addStretch()
 
         # --- 3. STACKED WIDGET ---
@@ -311,12 +312,38 @@ class MainWindow(QMainWindow):
         p.end()
         return QIcon(pixmap)
 
+    def _update_nav_pills(self, active_index):
+        active_style = (
+            "QPushButton {"
+            " background-color: #ffffff;"
+            " color: #000000;"
+            " border: none;"
+            " border-radius: 16px;"
+            " padding: 6px 16px;"
+            " font-size: 12px;"
+            " font-weight: bold;"
+            "}"
+        )
+        inactive_style = (
+            "QPushButton {"
+            " background-color: #242424;"
+            " color: #ffffff;"
+            " border: none;"
+            " border-radius: 16px;"
+            " padding: 6px 16px;"
+            " font-size: 12px;"
+            " font-weight: 500;"
+            "}"
+            "QPushButton:hover {"
+            " background-color: #333333;"
+            "}"
+        )
+        for i, btn in enumerate(self.nav_buttons):
+            btn.setStyleSheet(active_style if i == active_index else inactive_style)
+
     def set_page(self, index):
         self.stacked_widget.setCurrentIndex(index)
-        for i, btn in enumerate(self.nav_buttons):
-            btn.setObjectName("NavTopBtnActive" if i == index else "NavTopBtn")
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
+        self._update_nav_pills(index)
 
     def _pixmap_from_url(self, url, width, height):
         if not url:
