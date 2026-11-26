@@ -56,7 +56,7 @@ class SearchWorker(QThread):
 class MainWindow(QMainWindow):
     def __init__(self, username="User"):
         super().__init__()
-        self.username = username  # Store it immediately
+        self.username = username
         
         self.setWindowTitle("Pulse")
         self.resize(1100, 800)
@@ -109,6 +109,8 @@ class MainWindow(QMainWindow):
         main_widget = QWidget()
         main_widget.setObjectName("MainContainer")
         self.setCentralWidget(main_widget)
+        
+        # Use a QVBoxLayout for the main window
         outer_layout = QVBoxLayout(main_widget)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
@@ -194,31 +196,26 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.build_video_page())     # Index 3
         self.stacked_widget.addWidget(self.games_page)             # Index 4
 
+        # --- ASSEMBLE LAYOUT ---
         outer_layout.addWidget(header)
         outer_layout.addWidget(self.navbar)
+        
+        # CRITICAL FIX: Give the stacked widget a stretch factor of 1
         outer_layout.addWidget(self.stacked_widget, 1)
+        
         outer_layout.addWidget(self.create_player_bar())
 
-        # --- THE FIX: Call this at the very end ---
+        # Update username after all UI elements are built
         self.set_username(self.username)
 
     def set_username(self, username):
-        """Force updates the UI labels after they are created."""
         self.username = username
         initial = self.username[0].upper() if self.username else "U"
-        
-        # 1. Update Top-Right Profile Circle
         self.profile_label.setText(initial)
-        
-        # 2. Update Home Page Welcome Label
         if hasattr(self, 'home_welcome_label'):
             self.home_welcome_label.setText(f"Welcome back, {self.username}!")
-            
-        # 3. Update Video Page Welcome Label
         if hasattr(self, 'video_welcome_label'):
             self.video_welcome_label.setText(f"Welcome, {self.username}!")
-            
-        # 4. Update Games Page Welcome Label
         if hasattr(self, 'games_page') and hasattr(self.games_page, 'welcome_lbl'):
             self.games_page.welcome_lbl.setText(f"Welcome, {self.username}!")
 
@@ -252,7 +249,6 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(30, 20, 30, 20)
         layout.setSpacing(25)
 
-        # Create the label and save reference to self
         welcome_header = QHBoxLayout()
         self.home_welcome_label = QLabel("Welcome back, User!")
         self.home_welcome_label.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
@@ -419,7 +415,6 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setAlignment(Qt.AlignCenter)
         
-        # Store label reference for update later
         self.video_welcome_label = QLabel("Welcome, User!")
         self.video_welcome_label.setStyleSheet("color: #0055ff; font-size: 18px; font-weight: bold; margin-bottom: 10px;")
         
