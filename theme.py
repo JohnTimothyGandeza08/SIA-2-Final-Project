@@ -194,4 +194,44 @@ QSlider::sub-page:horizontal {
 background: white; 
 border-radius: 2px; 
 }
+QFrame#HeroBanner {
+    background-color: #11141a;
+    border-radius: 12px;
+    border: 1px solid #222;
+}
+
+QFrame#MixCard {
+    background-color: #181a1f;
+    border-radius: 10px;
+    border: 1px solid #222;
+}
+
+QFrame#MixCard:hover, QFrame#RecentCard:hover, QFrame#ArtistCard:hover {
+    background-color: #22252c;
+}
+
+QFrame#RecentCard {
+    background-color: #181a1f;
+    border-radius: 8px;
+}
+
+QFrame#ArtistCard {
+    background-color: #181a1f;
+    border-radius: 8px;
+    border: 1px solid #222;
+}
+
+QFrame#PlaylistRow {
+    background-color: transparent;
+    border-radius: 6px;
+}
+QFrame#PlaylistRow:hover {
+    background-color: #181818;
+}
+
+QFrame#LikedBanner {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #1e3a8a, stop:0.5 #0055ff, stop:1 #6b21a8);
+    border-radius: 12px;
+}
 """
