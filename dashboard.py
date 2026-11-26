@@ -7,15 +7,19 @@ from concurrent.futures import ThreadPoolExecutor
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QScrollArea, QFrame,
-    QSlider, QGridLayout, QStackedWidget, QSizePolicy, QMessageBox
+    QSlider, QGridLayout, QStackedWidget, QSizePolicy, QMessageBox,
+    QDialog, QComboBox
 )
-from PySide6.QtCore import Qt, QPointF, QUrl, QThread, Signal, QByteArray, QTimer, QSize
-from PySide6.QtGui import QPainter, QColor, QPolygonF, QBrush, QPixmap, QImage, QIcon, QPen
+from PySide6.QtCore import Qt, QPointF, QUrl, QThread, Signal, QByteArray, QTimer, QSize, QRectF, QObject
+from PySide6.QtGui import QPainter, QColor, QPolygonF, QBrush, QPixmap, QImage, QIcon, QPen, QPainterPath
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimediaWidgets import QVideoWidget
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
 from theme import DARK_THEME
 import jamendo_api
 from games_api import fetch_cartoon_images, fetch_random_pokemon, fetch_random_names, fetch_questions
+from video_api import VideoSearchClient, PixabayVideoClient
 
 
 # ======================================================================
