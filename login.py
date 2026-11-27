@@ -186,26 +186,6 @@ class LoginWindow(QWidget):
         switch_layout.addWidget(switch_lbl)
         switch_layout.addWidget(switch_btn)
 
-        divider_layout = QHBoxLayout()
-        line_left = QFrame()
-        line_left.setFrameShape(QFrame.HLine)
-        line_left.setStyleSheet("color: #333;")
-        line_right = QFrame()
-        line_right.setFrameShape(QFrame.HLine)
-        line_right.setStyleSheet("color: #333;")
-        divider_lbl = QLabel("Login with Others")
-        divider_lbl.setObjectName("DividerLabel")
-        divider_layout.addWidget(line_left)
-        divider_layout.addWidget(divider_lbl)
-        divider_layout.addWidget(line_right)
-
-        self.google_btn = QPushButton("G   Login with Google")
-        self.google_btn.setObjectName("SocialBtn")
-        self.google_btn.setCursor(Qt.PointingHandCursor)
-
-        self.facebook_btn = QPushButton("f   Login with Facebook")
-        self.facebook_btn.setObjectName("SocialBtn")
-
         login_layout.addWidget(title)
         login_layout.addWidget(subtitle)
         login_layout.addSpacing(10)
@@ -217,12 +197,6 @@ class LoginWindow(QWidget):
         login_layout.addWidget(self.login_btn)
         login_layout.addSpacing(10)
         login_layout.addLayout(switch_layout)
-        login_layout.addSpacing(20)
-        login_layout.addLayout(divider_layout)
-        login_layout.addSpacing(15)
-        login_layout.addWidget(self.google_btn)
-        login_layout.addSpacing(10)
-        login_layout.addWidget(self.facebook_btn)
 
         # SIGN UP FORM
         self.signup_widget = QWidget()
@@ -330,8 +304,6 @@ class LoginWindow(QWidget):
         self.su_error_label.clear()
         self.signup_btn.setText("Create Account")
         self.signup_btn.setEnabled(True)
-        self.google_btn.setText("G   Login with Google")
-        self.google_btn.setEnabled(True)
         self.user_input.setFocus()
 
     def handle_login(self):
