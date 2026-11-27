@@ -202,7 +202,6 @@ class LoginWindow(QWidget):
         self.google_btn = QPushButton("G   Login with Google")
         self.google_btn.setObjectName("SocialBtn")
         self.google_btn.setCursor(Qt.PointingHandCursor)
-        self.google_btn.clicked.connect(self.handle_google_oauth)
 
         self.facebook_btn = QPushButton("f   Login with Facebook")
         self.facebook_btn.setObjectName("SocialBtn")
@@ -388,18 +387,6 @@ class LoginWindow(QWidget):
             self.su_error_label.setText("Username is already taken. Please choose another.")
             self.signup_btn.setText("Create Account")
             self.signup_btn.setEnabled(True)
-
-    def handle_google_oauth(self):
-        self.error_label.setText("")
-        self.google_btn.setText("Waiting for browser...")
-        self.google_btn.setEnabled(False)
-        self.login_btn.setEnabled(False)
-        QTimer.singleShot(2000, self.finish_google_oauth)
-
-    def finish_google_oauth(self):
-        self.google_btn.setText("Success!")
-        QMessageBox.information(self, "OAuth Success", "Logged in with Google successfully!")
-        self.login_successful.emit("GoogleUser")
 
 # NO `if __name__ == "__main__":` BLOCK HERE.
 # Your app is launched via `run_app.py` instead.
